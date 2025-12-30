@@ -1,0 +1,58 @@
+# =============================================================================
+# RC Racer CI Container
+# =============================================================================
+# Lean container for CI/CD pipelines - no GUI dependencies
+#
+# Build:
+#   docker build -f Dockerfile.ci -t rc-racer-ci .
+#
+# Run:
+#   docker run --rm rc-racer-ci colcon build && colcon test
+# =============================================================================
+
+FROM osrf/ros:humble-ros-base
+
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only what's needed for building and testing
+RUN apt-get update && apt-get install -y \
+    # Build tools
+    build-essential \
+    cmake \
+    python3-pip \
+    python3-colcon-common-extensions \
+    # ROS 2 testing tools
+    ros-humble-ament-lint-auto \
+    ros-humble-ament-lint-common \
+    ros-humble-ament-cmake-gtest \
+    ros-humble-ament-cmake-pytest \
+    ros-humble-launch-testing \
+    ros-humble-launch-testing-ros \
+    ros-humble-launch-testing-ament-cmake \
+    # Required ROS 2 packages (no GUI)
+    ros-humble-robot-state-publisher \
+    ros-humble-xacro \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python test tools
+RUN pip3 install --no-cache-dir \
+    pytest \
+    pytest-cov
+
+# Set up workspace
+WORKDIR /ros2_ws
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+source /opt/ros/humble/setup.bash\n\
+if [ -f /ros2_ws/install/setup.bash ]; then\n\
+    source /ros2_ws/install/setup.bash\n\
+fi\n\
+exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash", "-c", "colcon build && colcon test && colcon test-result --verbose"]
+

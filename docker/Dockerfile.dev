@@ -1,0 +1,88 @@
+# =============================================================================
+# RC Racer Development Container
+# =============================================================================
+# Full development environment with GUI support (Gazebo, RViz)
+#
+# Build:
+#   docker build -f Dockerfile.dev -t rc-racer-dev .
+#
+# Run via docker-compose (recommended):
+#   docker-compose up -d dev
+#   docker-compose exec dev bash
+# =============================================================================
+
+FROM osrf/ros:humble-desktop
+
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install development tools and dependencies
+RUN apt-get update && apt-get install -y \
+    # Build tools
+    build-essential \
+    cmake \
+    python3-pip \
+    python3-colcon-common-extensions \
+    # ROS 2 development tools
+    ros-humble-ament-lint-auto \
+    ros-humble-ament-lint-common \
+    ros-humble-ament-cmake-gtest \
+    ros-humble-ament-cmake-pytest \
+    ros-humble-launch-testing \
+    ros-humble-launch-testing-ros \
+    ros-humble-launch-testing-ament-cmake \
+    # Simulation
+    ros-humble-gazebo-ros \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-plugins \
+    ros-humble-robot-state-publisher \
+    ros-humble-xacro \
+    ros-humble-joint-state-publisher \
+    ros-humble-joint-state-publisher-gui \
+    # Visualization
+    ros-humble-rviz2 \
+    ros-humble-rqt \
+    ros-humble-rqt-common-plugins \
+    # Debugging
+    gdb \
+    valgrind \
+    htop \
+    tmux \
+    vim \
+    git \
+    # Networking tools
+    iputils-ping \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python development tools
+RUN pip3 install --no-cache-dir \
+    pytest \
+    pytest-cov \
+    black \
+    flake8 \
+    mypy
+
+# Set up workspace
+WORKDIR /ros2_ws
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+source /opt/ros/humble/setup.bash\n\
+if [ -f /ros2_ws/install/setup.bash ]; then\n\
+    source /ros2_ws/install/setup.bash\n\
+fi\n\
+exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
+
+# Set up bashrc for interactive use
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
+    echo "if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi" >> ~/.bashrc && \
+    echo "export ROS_DOMAIN_ID=0" >> ~/.bashrc && \
+    echo "alias cb='colcon build'" >> ~/.bashrc && \
+    echo "alias ct='colcon test'" >> ~/.bashrc && \
+    echo "alias ctr='colcon test-result --verbose'" >> ~/.bashrc
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
+

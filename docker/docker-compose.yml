@@ -1,11 +1,92 @@
+# =============================================================================
+# RC Racer Docker Compose
+# =============================================================================
+# Development, testing, and hardware deployment orchestration
+#
+# Usage:
+#   docker-compose up -d dev       # Start dev container (simulation)
+#   docker-compose exec dev bash   # Enter dev container
+#   docker-compose up -d hardware  # Start hardware container (on robot)
+#   docker-compose down            # Stop all containers
+# =============================================================================
+
 version: '3.8'
 
 services:
-  rc-racer:
+  # ===========================================================================
+  # Development Container (Simulation)
+  # ===========================================================================
+  # Interactive development with GUI support (Gazebo, RViz)
+  # Use on development machine, not on robot hardware
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    image: rc-racer-dev:latest
+    container_name: rc-racer-dev
+    hostname: rc-racer-dev
+    stdin_open: true
+    tty: true
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+    volumes:
+      # Mount source code (edits on host are immediately available)
+      - ../src:/ros2_ws/src/rc-racer/src:rw
+      - ../test:/ros2_ws/src/rc-racer/test:rw
+      - ../launch:/ros2_ws/src/rc-racer/launch:rw
+      - ../config:/ros2_ws/src/rc-racer/config:rw
+      # Persist build artifacts (faster rebuilds)
+      - rc-racer-build:/ros2_ws/build
+      - rc-racer-install:/ros2_ws/install
+      - rc-racer-log:/ros2_ws/log
+      # X11 for GUI applications
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # GPU support (if available)
+      - /dev/dri:/dev/dri
+    networks:
+      - ros-network
+    command: ["bash"]
+
+  # ===========================================================================
+  # CI Container
+  # ===========================================================================
+  # Lean container for running tests (no GUI)
+  ci:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ci
+    image: rc-racer-ci:latest
+    container_name: rc-racer-ci
+    environment:
+      - ROS_DOMAIN_ID=99
+    volumes:
+      - ../src:/ros2_ws/src/rc-racer/src:ro
+      - ../test:/ros2_ws/src/rc-racer/test:ro
+      - ./ci-results:/ros2_ws/log:rw
+    networks:
+      - ros-network
+    command: >
+      bash -c "
+        colcon build --symlink-install &&
+        colcon test --packages-skip rc_racer_system_tests &&
+        colcon test-result --verbose
+      "
+
+  # ===========================================================================
+  # Hardware Container (On Robot)
+  # ===========================================================================
+  # For deployment on actual robot hardware
+  # Use on Jetson/Pi with physical sensors attached
+  hardware:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: rc-racer
+    image: rc-racer:latest
+    container_name: rc-racer-hardware
     runtime: nvidia
     network_mode: host
     privileged: true
@@ -23,3 +104,18 @@ services:
       - /dev/i2c-1:/dev/i2c-1  # IMU
     command: /bin/bash
 
+# ===========================================================================
+# Volumes
+# ===========================================================================
+# Named volumes for build artifacts (persist across container restarts)
+volumes:
+  rc-racer-build:
+  rc-racer-install:
+  rc-racer-log:
+
+# ===========================================================================
+# Networks
+# ===========================================================================
+networks:
+  ros-network:
+    driver: bridge

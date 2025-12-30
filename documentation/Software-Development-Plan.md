@@ -8,6 +8,8 @@
 
 This document outlines the software development plan for the RC Racer autonomous vehicle project. The system is built on ROS 2 Humble with a modular microservices architecture.
 
+**Development Environment:** All development, building, and testing is done inside Docker containers for reproducibility and isolation.
+
 ### 1.1 Package Structure
 
 ```
@@ -306,9 +308,118 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ---
 
-## 3. Build & Test Commands
+## 3. Docker Development Environment
 
-### 3.1 Building
+All development is done inside Docker containers for reproducibility. This ensures:
+
+- Consistent ROS 2 Humble + Gazebo environment
+- No "works on my machine" issues
+- Identical dev/CI/production environments
+- Easy onboarding for new developers
+
+### 3.1 Development Container Setup
+
+**Directory:** `docker/` (project root)
+
+```
+docker/
+├── Dockerfile.dev           # Development environment
+├── Dockerfile.ci            # CI/CD environment (leaner)
+├── docker-compose.yml       # Development orchestration
+└── .env.example             # Environment variables template
+```
+
+### 3.2 Quick Start
+
+```bash
+# 1. Clone the repository
+git clone <repo-url> rc-racer && cd rc-racer
+
+# 2. Copy environment template
+cp docker/.env.example docker/.env
+
+# 3. Build and start development container
+cd docker
+docker-compose up -d dev
+
+# 4. Enter the container
+docker-compose exec dev bash
+
+# 5. (Inside container) Build the workspace
+colcon build
+
+# 6. (Inside container) Source and run
+source install/setup.bash
+ros2 launch rc_racer_bringup rc_racer.launch.py
+```
+
+### 3.3 Development Workflow with Docker
+
+#### Starting the Dev Container
+
+```bash
+cd docker
+docker-compose up -d dev
+docker-compose exec dev bash
+```
+
+#### Rebuilding After Code Changes
+
+Source code is mounted into the container, so edits on host are immediately available:
+
+```bash
+# Inside container - rebuild changed packages
+colcon build --packages-select <package_name>
+source install/setup.bash
+```
+
+#### Running Tests Inside Container
+
+```bash
+# Inside container
+colcon test --packages-select <package_name>
+colcon test-result --verbose
+```
+
+#### Stopping the Container
+
+```bash
+# From host
+cd docker
+docker-compose down
+```
+
+### 3.4 GUI Support (Gazebo, RViz)
+
+For visualization tools, X11 forwarding is configured:
+
+```bash
+# On host (Linux) - allow X connections
+xhost +local:docker
+
+# Start container with GUI support
+docker-compose up -d dev
+
+# Inside container - launch Gazebo
+ros2 launch gazebo_ros gazebo.launch.py
+```
+
+### 3.5 Container Architecture
+
+| Container       | Purpose                 | Base Image                 |
+| --------------- | ----------------------- | -------------------------- |
+| `dev`           | Interactive development | `osrf/ros:humble-desktop`  |
+| `ci`            | CI/CD pipeline          | `osrf/ros:humble-ros-base` |
+| `system-tests`  | System test runner      | `osrf/ros:humble-desktop`  |
+| `gazebo-server` | Headless simulation     | `osrf/ros:humble-desktop`  |
+
+---
+
+## 4. Build & Test Commands
+
+> **Note:** All commands below are run **inside the Docker container** unless otherwise specified.
+
+### 4.1 Building
 
 ```bash
 # Build all packages
@@ -319,13 +430,16 @@ colcon build --packages-select <package_name>
 
 # Build with tests
 colcon build --cmake-args -DBUILD_TESTING=ON
+
+# Clean build
+rm -rf build install log && colcon build
 ```
 
-### 3.2 Testing
+### 4.2 Testing
 
 ```bash
-# Run all tests
-colcon test
+# Run all tests (excludes slow system tests)
+colcon test --packages-skip rc_racer_system_tests
 
 # Run tests for specific package
 colcon test --packages-select <package_name>
@@ -335,20 +449,28 @@ colcon test-result --verbose
 
 # Run with output on failure
 colcon test --event-handlers console_direct+
+
+# Run specific test by name
+colcon test --packages-select <package> --ctest-args -R <test_name>
 ```
 
-### 3.3 Code Quality
+### 4.3 Code Quality
 
 ```bash
 # Linting (ament_lint)
 colcon test --packages-select <package> --ctest-args -R lint
+
+# Format check (if configured)
+ament_clang_format --check src/<package>
 ```
 
 ---
 
-## 4. Development Workflow
+## 5. Adding Tests
 
-### 4.1 Adding a New Test (C++)
+> **Note:** All commands below are run **inside the Docker container**.
+
+### 5.1 Adding a New Unit Test (C++)
 
 1. Create test file in `src/<package>/test/test_<name>.cpp`
 2. Add to `CMakeLists.txt`:
@@ -359,7 +481,7 @@ colcon test --packages-select <package> --ctest-args -R lint
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 4.2 Adding a New Test (Python)
+### 5.2 Adding a New Unit Test (Python)
 
 1. Create test file in `src/<package>/test/test_<name>.py`
 2. Add to `CMakeLists.txt`:
@@ -368,7 +490,7 @@ colcon test --packages-select <package> --ctest-args -R lint
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 4.3 Adding a New Integration Test
+### 5.3 Adding a New Integration Test
 
 1. Copy template: `cp test/integration/launch/test_template.launch.py.example test/integration/launch/test_<name>.launch.py`
 2. Modify the launch file:
@@ -384,7 +506,7 @@ colcon test --packages-select <package> --ctest-args -R lint
    ```
 4. Run: `colcon test --packages-select rc_racer_integration_tests`
 
-### 4.4 Adding a New System Test
+### 5.4 Adding a New System Test
 
 1. Create launch test file in `test/system/launch/test_<name>.launch.py`
 2. Include:
@@ -400,14 +522,14 @@ colcon test --packages-select <package> --ctest-args -R lint
    )
    ```
 4. If needed, add Gazebo world file to `test/system/worlds/`
-5. Test locally: `colcon test --packages-select rc_racer_system_tests`
-6. Test in Docker: `cd test/system/docker && docker-compose up --abort-on-container-exit`
+5. Test locally (inside container): `colcon test --packages-select rc_racer_system_tests`
+6. Test via Docker orchestration (from host): `cd test/system/docker && docker-compose up --abort-on-container-exit`
 
 ---
 
-## 5. Continuous Integration
+## 6. Continuous Integration
 
-### 5.1 Test Execution by Trigger
+### 6.1 Test Execution by Trigger
 
 | Trigger                    | Unit Tests | Integration Tests | System Tests           |
 | -------------------------- | ---------- | ----------------- | ---------------------- |
@@ -417,24 +539,42 @@ colcon test --packages-select <package> --ctest-args -R lint
 | **Pre-release**            | ✅ All     | ✅ All            | ✅ All (required)      |
 | **Before hardware deploy** | ✅ All     | ✅ All            | ✅ All + manual review |
 
-### 5.2 CI Pipeline Commands
+### 6.2 CI Pipeline Commands
+
+All CI runs inside the `ci` Docker container for consistency.
 
 ```bash
-# Fast feedback (PR checks)
+# Fast feedback (PR checks) - inside ci container
 colcon test --packages-skip rc_racer_system_tests
 
-# Full test suite (nightly)
+# Full test suite (nightly) - inside ci container
 colcon test
 
-# System tests only (Docker)
+# System tests only (separate orchestration from host)
 cd test/system/docker && docker-compose up --abort-on-container-exit --exit-code-from system-tests
+```
+
+### 6.3 CI Docker Usage
+
+```yaml
+# Example GitHub Actions / GitLab CI snippet
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: rc-racer-ci:latest # Built from docker/Dockerfile.ci
+    steps:
+      - uses: actions/checkout@v3
+      - run: colcon build
+      - run: colcon test --packages-skip rc_racer_system_tests
+      - run: colcon test-result --verbose
 ```
 
 ---
 
-## 6. Dependencies
+## 7. Dependencies
 
-### 6.1 Test Dependencies (per package.xml)
+### 7.1 Test Dependencies (per package.xml)
 
 ```xml
 <test_depend>ament_lint_auto</test_depend>
@@ -444,7 +584,9 @@ cd test/system/docker && docker-compose up --abort-on-container-exit --exit-code
 <test_depend>ros_testing</test_depend>
 ```
 
-### 6.2 System Test Dependencies
+### 7.2 System Test Dependencies
+
+All included in Docker images:
 
 - Gazebo (simulation)
 - ros2bag (replay testing)

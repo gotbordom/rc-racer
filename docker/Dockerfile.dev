@@ -6,9 +6,9 @@
 # Build:
 #   docker build -f Dockerfile.dev -t rc-racer-dev .
 #
-# Run via docker-compose (recommended):
-#   docker-compose up -d dev
-#   docker-compose exec dev bash
+# Run via docker compose (recommended):
+#   docker compose up -d dev
+#   docker compose exec dev bash
 # =============================================================================
 
 FROM osrf/ros:humble-desktop
@@ -31,6 +31,18 @@ RUN apt-get update && apt-get install -y \
     ros-humble-launch-testing \
     ros-humble-launch-testing-ros \
     ros-humble-launch-testing-ament-cmake \
+    # ROS 2 message packages
+    ros-humble-std-msgs \
+    ros-humble-sensor-msgs \
+    ros-humble-geometry-msgs \
+    ros-humble-nav-msgs \
+    ros-humble-vision-msgs \
+    # ROS 2 transform library
+    ros-humble-tf2 \
+    ros-humble-tf2-ros \
+    # Computer vision
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
     # Simulation
     ros-humble-gazebo-ros \
     ros-humble-gazebo-ros-pkgs \
@@ -68,12 +80,12 @@ WORKDIR /ros2_ws
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
-set -e\n\
-source /opt/ros/humble/setup.bash\n\
-if [ -f /ros2_ws/install/setup.bash ]; then\n\
+    set -e\n\
+    source /opt/ros/humble/setup.bash\n\
+    if [ -f /ros2_ws/install/setup.bash ]; then\n\
     source /ros2_ws/install/setup.bash\n\
-fi\n\
-exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
+    fi\n\
+    exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
 
 # Set up bashrc for interactive use
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \

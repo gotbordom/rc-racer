@@ -1,0 +1,113 @@
+TODO (AT) This is just some quick notes for when I come back to this
+Hardware list:
+- Frame:
+  - Name: Traxxis Slash
+  - Link: TBD
+  - Drawning: TBD
+- Steering Servo
+  - Name: Traxxis Slash default
+  - Link: TBD
+  - Drawning: TBD
+- Drive Motor:
+  - Name: Traxxis Slash Titan 12T 550
+  - Link: TBD
+  - Drawning: TBD
+- Drive Gearing:
+  - Pinion Gear:
+    - Name: Unknown
+    - Teeth: 22
+  - Spur Gear:
+    - Name: Unknown
+    - Teeth: 76
+  - Transmission Gear:
+    - Name: Traxxas Slash's Magnum 272
+    - Gear Ratio: 2.72
+  - Differential Gear:
+    - Name: Planetary gear differential with steel ring gear
+    - Combined into transmission ratio at this time. 
+  - Final Drive Ratio: (Spur Teeth / Pinion Teeth) * Internal Gear Ratio * Differential Gear Ratio = 3.45 * 2.72 = 9.384:1
+- Wheel
+  - Name: Traxxas SCT dual profile
+  - Dimensions:
+    - Outer Diameter: 67.4mm (2.7in)
+    - Width: 28.5mm (1.1in)
+    - NOTE: Dimensions are expected to change, this param should be adjustable as needed. Tires get smaller after use :smirk:
+  - Insert: Foam
+- Motor Encoder:
+  - Name: Digikey - H2-0128-0000-05-A-Y-U-F-B-X
+  - Type: magnetic
+  - Style: Incremental
+  - Pulses per Revolution: 128
+  - NOTE: I am choosing this one for a few reasons:
+    - I want the pulses to be low so I reduce inturrupt triggers handling ticks.
+    - However I need enough resolution to ensure that the movement PER pulse is sufficiently small to allow myself to reduce a rotational transform from a series of cos / sin equations to a series of simple multiplcation equations using the rule of small angles. There are some steps to this
+      - For starters lets assume the steering column can effectively turn 90 :degree: ( it likely can't but this is worst case anyway )
+      - The RC car wheelbase is: 384mm
+      - The min turning radius then would be: 384mm / sin(90) = 384mm.
+      - To allow for the rule of small angles, we need :theta: << 1 radian.
+      - The angular displacement ( in radian ) for a single pulse is: Linear Displaement / Turning Radius, with the gearing, wheel diameter, etc. and the absolute smallest turning radius for this RC car being 384mm, then our angular displacement = 0.1764 mm / 384mm = 0.000459 radians.
+      - Since any turn angle between +/- 0-90 :degree: ( assuming 0 :degree: is forward ) will create a larger turning radius, this means that 0.000459 is the largest angular displacement we should see. So we should be safe to assume that PER pulse we can use the small angle assumption. Even then one wheel rotation ( 0.000459 * 128) would still be small enough to allow for the assumption to hold as well.
+      - So with 128 pulses, and this frame, gearing and wheel setup, all turning angles should be small enough, to allow for small angle assumption. Just thinking ahead to make math easier/ faster.
+- Motor Driver
+  - Name: PCA9686 
+  - Link: https://www.adafruit.com/product/815
+  - Drawing: TBD
+  - Using: Nvidia Jetson Nano PINS 1,3,5,6
+      - Also known as 3.3 DC Volt, Ground and I2C Bus 1 (SDA/SCL)
+- IMU
+  - Name: BNO085 
+  - Link: https://www.adafruit.com/product/4754
+  - Drawing: TBD
+  - Using: Nvidia Jetson Nano PINS 17,20,27,28
+      - Also known as 3.3 DC Volt, Ground and I2C Bus 0 (SDA/SCL)
+  - NOTES:
+    - Known compatability issues: 
+      The BNO08x I2C implementation violates the I2C protocol in some circumstances. This causes it not to work well with certain chip families. It does not work well with Espressif ESP32, ESP32-S3, and NXP i.MX RT1011, and it does not work well with I2C multiplexers. Operation with SAMD51, RP2040, STM32F4, and nRF52840 is more reliable.
+- Computer:
+  - Name: NVIDIA Jetson Nano Developer Kit (945-13450-0000-100)
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD
+- Cpu fan:
+  - Name: Noctua NF-A4x20 5V PWM, Premium Quiet Fan, 4-Pin, 5V Version (40x20mm, Brown)
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD
+- Wifi / Bluetooth Adapter:
+  - Name: Waveshare AC8265 Wireless NIC Supports 2.4GHz / 5GHz Dual Band WiFi and Bluetoth 4.2
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD 
+- Computer Portable Battery
+  - Name: Waveshare AC8265 Wireless NIC Supports 2.4GHz / 5GHz Dual Band WiFi and Bluetoth 4.2
+  - Count: 2+ ( good to have backups )
+  - Link: TBD
+  - Drawning: TBD 
+- ESC
+  - Name: 
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD
+- Radio receiver and controller
+  - Name: Futaba 3PV 3-Channel 2.4GHz FHSS/S-FHSS Radio System w/R304SB Receive
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD 
+- Motor Battery
+  - Name: 
+  - Count: 2+ ( Good to have backups )
+  - Link: TBD
+  - Drawning: TBD 
+- Cameras in-use:
+  - Name: 8MP Camera Module with IMX219 Sensor 3280 × 2464 Resolution 200 Degree Wide Angle
+  - Count: 2
+  - Link: TBD
+  - Drawning: TBD
+- Cameras in-testing:
+  - NBame: Arducam Mini 8MP IMX219 Low Distortion 105°(D) FOV M12 Lens
+  - Count: 1
+  - Link: TBD
+  - Drawning: TBD
+- Specialty Boards ( TODO - I need to remember what these two boards are... I have everything written down somewhere. They allow me to switch between RC controller and computer being in control of motors )
+  - Name: TBD
+  - Count: 2

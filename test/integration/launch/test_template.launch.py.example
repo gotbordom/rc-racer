@@ -1,0 +1,137 @@
+"""
+Template for RC Racer integration tests using launch_testing.
+
+This file demonstrates the structure for integration tests that:
+  - Launch multiple real nodes
+  - Use real DDS
+  - Assert on the ROS graph behavior
+
+Copy this template and modify for your specific test case.
+"""
+
+import unittest
+import time
+
+import launch
+import launch_ros.actions
+import launch_testing
+import launch_testing.actions
+import launch_testing.markers
+
+import rclpy
+from rclpy.node import Node
+
+
+@launch_testing.markers.keep_alive
+def generate_test_description():
+    """
+    Generate the launch description for the test.
+    
+    This function launches the nodes under test.
+    """
+    # Example: Launch nodes under test
+    # node_under_test = launch_ros.actions.Node(
+    #     package='state_estimation',
+    #     executable='state_estimation_node',
+    #     name='state_estimation',
+    #     parameters=[{
+    #         'use_sim_time': True,
+    #     }],
+    # )
+
+    return launch.LaunchDescription([
+        # node_under_test,
+        
+        # Start tests after a brief delay for node startup
+        launch_testing.actions.ReadyToTest(),
+    ])
+
+
+class TestTopicsExist(unittest.TestCase):
+    """
+    Test that expected topics appear on the ROS graph.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        rclpy.init()
+        cls.node = rclpy.create_node('test_node')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.node.destroy_node()
+        rclpy.shutdown()
+
+    def test_topic_exists(self):
+        """Verify expected topics are published."""
+        # Example: Check for a topic
+        # topic_list = self.node.get_topic_names_and_types()
+        # topic_names = [t[0] for t in topic_list]
+        # self.assertIn('/state_estimation/output', topic_names)
+        pass
+
+
+class TestMessageFlow(unittest.TestCase):
+    """
+    Test that messages flow correctly between nodes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        rclpy.init()
+        cls.node = rclpy.create_node('test_message_flow')
+        cls.received_msgs = []
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.node.destroy_node()
+        rclpy.shutdown()
+
+    def test_messages_received(self):
+        """Verify messages are received on expected topics."""
+        # Example: Subscribe and wait for messages
+        # sub = self.node.create_subscription(
+        #     SomeMsg, '/topic', lambda msg: self.received_msgs.append(msg), 10
+        # )
+        # 
+        # # Spin for a bit to receive messages
+        # end_time = time.time() + 5.0
+        # while time.time() < end_time and len(self.received_msgs) < 1:
+        #     rclpy.spin_once(self.node, timeout_sec=0.1)
+        # 
+        # self.assertGreater(len(self.received_msgs), 0)
+        pass
+
+
+class TestStateConvergence(unittest.TestCase):
+    """
+    Test that system state converges to expected values.
+    """
+
+    def test_state_converges(self):
+        """Verify state converges within timeout."""
+        # Example: Monitor state and check convergence
+        pass
+
+
+class TestNodeHealth(unittest.TestCase):
+    """
+    Test that node failures are detected.
+    """
+
+    def test_dead_node_detected(self):
+        """Verify dead nodes are detected by monitoring system."""
+        # Example: Kill a node and verify detection
+        pass
+
+
+# Post-shutdown tests (run after nodes are terminated)
+@launch_testing.post_shutdown_test()
+class TestShutdown(unittest.TestCase):
+    """Tests to run after the nodes have shutdown."""
+
+    def test_exit_codes(self, proc_info):
+        """Verify all nodes exited cleanly."""
+        # launch_testing.asserts.assertExitCodes(proc_info)
+        pass
+

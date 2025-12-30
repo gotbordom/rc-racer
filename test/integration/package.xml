@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rc_racer_integration_tests</name>
+  <version>0.0.1</version>
+  <description>Integration tests for RC Racer - tests ROS graphs with real DDS</description>
+  <maintainer email="todo@todo.com">TODO</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Test framework dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>launch_testing</test_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
+  <test_depend>launch_testing_ros</test_depend>
+  <test_depend>launch_ros</test_depend>
+
+  <!-- ROS 2 core dependencies for test assertions -->
+  <test_depend>rclpy</test_depend>
+  <test_depend>std_msgs</test_depend>
+  <test_depend>sensor_msgs</test_depend>
+  <test_depend>geometry_msgs</test_depend>
+  <test_depend>nav_msgs</test_depend>
+
+  <!-- Packages under test (add as they are developed) -->
+  <test_depend>state_estimation</test_depend>
+  <test_depend>localization</test_depend>
+  <test_depend>mapping</test_depend>
+  <test_depend>object_detection</test_depend>
+  <test_depend>planning_control</test_depend>
+  <test_depend>motor_controller</test_depend>
+  <test_depend>safety</test_depend>
+  <test_depend>telemetry</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+

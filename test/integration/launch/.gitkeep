@@ -1,0 +1,12 @@
+# Integration test launch files go here
+# 
+# Each launch test file should:
+#   1. Launch the nodes under test
+#   2. Define test cases that assert on the ROS graph
+#   3. Clean up nodes after test completion
+#
+# Example structure for a launch test:
+#   test_<name>.launch.py
+#
+# See: https://github.com/ros2/launch/tree/rolling/launch_testing
+

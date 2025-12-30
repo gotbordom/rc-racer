@@ -3,14 +3,12 @@
 # =============================================================================
 # Development, testing, and hardware deployment orchestration
 #
-# Usage:
-#   docker-compose up -d dev       # Start dev container (simulation)
-#   docker-compose exec dev bash   # Enter dev container
-#   docker-compose up -d hardware  # Start hardware container (on robot)
-#   docker-compose down            # Stop all containers
+# Usage (Docker Compose V2 - CLI plugin):
+#   docker compose up -d dev       # Start dev container (simulation)
+#   docker compose exec dev bash   # Enter dev container
+#   docker compose up -d hardware  # Start hardware container (on robot)
+#   docker compose down            # Stop all containers
 # =============================================================================
-
-version: '3.8'
 
 services:
   # ===========================================================================

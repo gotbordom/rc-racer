@@ -407,14 +407,14 @@ colcon test-result --verbose
 
 ```bash
 cd test/system/docker
-docker-compose up --abort-on-container-exit
-docker-compose down
+docker compose up --abort-on-container-exit
+docker compose down
 ```
 
 **CI/CD Pipeline:**
 
 ```bash
-docker-compose up --abort-on-container-exit --exit-code-from system-tests
+docker compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
 #### 3.5.7 Docker Test Environment
@@ -522,10 +522,10 @@ xhost +local:docker
 
 # 4. Build and start development container
 cd docker
-docker-compose up -d dev
+docker compose up -d dev
 
 # 5. Enter the container
-docker-compose exec dev bash
+docker compose exec dev bash
 
 # 6. (Inside container) Build the workspace
 colcon build
@@ -557,8 +557,8 @@ scripts/
 
 ```bash
 cd docker
-docker-compose up -d dev
-docker-compose exec dev bash
+docker compose up -d dev
+docker compose exec dev bash
 ```
 
 #### Rebuilding After Code Changes
@@ -584,7 +584,7 @@ colcon test-result --verbose
 ```bash
 # From host
 cd docker
-docker-compose down
+docker compose down
 ```
 
 ### 4.6 GUI Support (Gazebo, RViz)
@@ -596,7 +596,7 @@ For visualization tools, X11 forwarding is configured:
 xhost +local:docker
 
 # Start container with GUI support
-docker-compose up -d dev
+docker compose up -d dev
 
 # Inside container - launch Gazebo
 ros2 launch gazebo_ros gazebo.launch.py
@@ -721,7 +721,7 @@ ament_clang_format --check src/<package>
    ```
 4. If needed, add Gazebo world file to `test/system/worlds/`
 5. Test locally (inside container): `colcon test --packages-select rc_racer_system_tests`
-6. Test via Docker orchestration (from host): `cd test/system/docker && docker-compose up --abort-on-container-exit`
+6. Test via Docker orchestration (from host): `cd test/system/docker && docker compose up --abort-on-container-exit`
 
 ---
 
@@ -749,7 +749,7 @@ colcon test --packages-skip rc_racer_system_tests
 colcon test
 
 # System tests only (separate orchestration from host)
-cd test/system/docker && docker-compose up --abort-on-container-exit --exit-code-from system-tests
+cd test/system/docker && docker compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
 ### 7.3 CI Docker Usage

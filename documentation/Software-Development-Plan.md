@@ -37,9 +37,111 @@ src/<package>/
 
 ---
 
-## 2. Testing Strategy
+## 2. Critical Design Rule: Testable Nodes
 
-### 2.1 Test Pyramid
+> **This rule saves years of pain. Follow it religiously.**
+
+### 2.1 The Principle
+
+**Nodes should be testable without ROS spinning.**
+
+This means:
+
+| Do                                      | Don't                                  |
+| --------------------------------------- | -------------------------------------- |
+| Put logic in plain C++ / Python classes | Put logic directly in callbacks        |
+| ROS node is a thin adapter              | ROS node contains business logic       |
+| Test the class, not the node            | Test by spinning up ROS infrastructure |
+
+### 2.2 Architecture Pattern
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     ROS 2 Node                          │
+│  (thin adapter: subscriptions, publishers, parameters)  │
+├─────────────────────────────────────────────────────────┤
+│                    Logic Class                          │
+│  (pure C++/Python: algorithms, state, computations)     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 2.3 Package Structure (Enforcing the Pattern)
+
+```
+src/<package>/
+├── include/<package>/
+│   ├── <package>_node.hpp      # ROS node (thin adapter)
+│   └── <package>_logic.hpp     # Pure logic class (no ROS deps)
+├── src/
+│   ├── <package>_node.cpp      # Wires ROS to logic class
+│   └── <package>_logic.cpp     # All the real work
+└── test/
+    ├── test_<package>_logic.cpp  # Tests logic WITHOUT ROS
+    └── test_<package>_node.cpp   # (Optional) Integration test with ROS
+```
+
+### 2.4 Example: State Estimation
+
+**Bad (untestable):**
+
+```cpp
+class StateEstimationNode : public rclcpp::Node {
+  void imu_callback(const Imu::SharedPtr msg) {
+    // 200 lines of Kalman filter math here
+    // Can only test by spinning up ROS
+  }
+};
+```
+
+**Good (testable):**
+
+```cpp
+// state_estimation_logic.hpp - NO ROS INCLUDES
+class StateEstimationLogic {
+public:
+  State update(const ImuData& imu);  // Pure function
+  State predict(double dt);
+private:
+  KalmanFilter filter_;
+};
+
+// state_estimation_node.cpp - Thin adapter
+class StateEstimationNode : public rclcpp::Node {
+  void imu_callback(const Imu::SharedPtr msg) {
+    ImuData data = convert(msg);      // Convert ROS → plain struct
+    State state = logic_.update(data); // Delegate to logic
+    publisher_->publish(convert(state)); // Convert back to ROS
+  }
+  StateEstimationLogic logic_;
+};
+```
+
+**Test (no ROS required):**
+
+```cpp
+TEST(StateEstimationLogicTest, UpdateWithImu) {
+  StateEstimationLogic logic;
+  ImuData imu{.accel = {0, 0, 9.81}, .gyro = {0, 0, 0}};
+
+  State result = logic.update(imu);
+
+  EXPECT_NEAR(result.orientation.w, 1.0, 0.01);
+}
+```
+
+### 2.5 Benefits
+
+- **Fast tests:** No ROS executor, no DDS, milliseconds not seconds
+- **Deterministic:** No timing issues, no flaky tests
+- **Debuggable:** Step through logic in debugger without ROS noise
+- **Reusable:** Logic can be used outside ROS (simulation, other frameworks)
+- **Reviewable:** Separation makes code easier to understand
+
+---
+
+## 3. Testing Strategy
+
+### 3.1 Test Pyramid
 
 ```
 ┌─────────────────────────────┐
@@ -51,7 +153,7 @@ src/<package>/
 └─────────────────────────────┘
 ```
 
-### 2.2 Unit Tests (Node-Local)
+### 3.2 Unit Tests (Node-Local)
 
 **Location:** `src/<package>/test/`
 
@@ -102,7 +204,7 @@ ament_target_dependencies(test_my_logic rclcpp std_msgs)
 ament_add_pytest_test(test_my_logic_py test/test_my_logic.py)
 ```
 
-### 2.3 Integration Tests
+### 3.3 Integration Tests
 
 **Purpose:** Test ROS graphs (not individual nodes) with real DDS communication.
 
@@ -117,7 +219,7 @@ colcon test --packages-select rc_racer_integration_tests
 colcon test-result --verbose
 ```
 
-#### 2.3.1 What Integration Tests Do
+#### 3.3.1 What Integration Tests Do
 
 Integration tests launch **multiple real nodes** with **real DDS** to verify:
 
@@ -128,19 +230,19 @@ Integration tests launch **multiple real nodes** with **real DDS** to verify:
 | **State Converges**     | System reaches expected state within timeout      |
 | **Dead Nodes Detected** | Node failures trigger appropriate responses       |
 
-#### 2.3.2 What Integration Tests Do NOT Do
+#### 3.3.2 What Integration Tests Do NOT Do
 
 - Test individual node logic (use unit tests)
 - Test full end-to-end scenarios (use system tests)
 - Test hardware interfaces directly
 
-#### 2.3.3 Framework
+#### 3.3.3 Framework
 
 - **`launch_testing`** - Launch nodes and run assertions
 - **`launch_testing_ros`** - ROS 2 specific test utilities
 - **`launch_testing_ament_cmake`** - CMake integration
 
-#### 2.3.4 Integration Test Structure
+#### 3.3.4 Integration Test Structure
 
 ```
 test/integration/
@@ -155,7 +257,7 @@ test/integration/
     └── test_params.yaml
 ```
 
-#### 2.3.5 Planned Integration Tests
+#### 3.3.5 Planned Integration Tests
 
 | Test Name                 | Nodes Under Test                                   | Assertions                                           |
 | ------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
@@ -164,7 +266,7 @@ test/integration/
 | `test_safety_system`      | safety + all critical nodes                        | E-stop triggers, watchdog works, node death detected |
 | `test_full_graph_startup` | All nodes                                          | All nodes launch, no crashes, all topics exist       |
 
-#### 2.3.6 Example CMakeLists.txt Entry
+#### 3.3.6 Example CMakeLists.txt Entry
 
 ```cmake
 find_package(launch_testing_ament_cmake REQUIRED)
@@ -176,7 +278,7 @@ add_launch_test(
 )
 ```
 
-#### 2.3.7 Launch Test File Structure
+#### 3.3.7 Launch Test File Structure
 
 Each launch test file (`*.launch.py`) contains:
 
@@ -218,7 +320,7 @@ class TestShutdown(unittest.TestCase):
         launch_testing.asserts.assertExitCodes(proc_info)
 ```
 
-### 2.4 System / End-to-End Tests
+### 3.4 System / End-to-End Tests
 
 **Purpose:** Full system validation in simulation with realistic sensors.
 
@@ -226,7 +328,7 @@ class TestShutdown(unittest.TestCase):
 
 **Package:** `rc_racer_system_tests`
 
-#### 2.4.1 Characteristics
+#### 3.4.1 Characteristics
 
 | Property      | Value                                            |
 | ------------- | ------------------------------------------------ |
@@ -234,14 +336,14 @@ class TestShutdown(unittest.TestCase):
 | **Stability** | BRITTLE (sensitive to timing, environment)       |
 | **Value**     | EXTREMELY VALUABLE (catches real-world failures) |
 
-#### 2.4.2 What System Tests Validate
+#### 3.4.2 What System Tests Validate
 
 - **Startup order** - Nodes initialize in correct dependency order
 - **Failure modes** - System handles crashes and failures gracefully
 - **Safety behavior** - E-stop, watchdogs, and safety limits work correctly
 - **Real-time-ish constraints** - Control loops and sensor pipelines meet timing requirements
 
-#### 2.4.3 Test Files
+#### 3.4.3 Test Files
 
 ```
 test/system/
@@ -258,7 +360,7 @@ test/system/
     └── docker-compose.yml               # Orchestrated test runs
 ```
 
-#### 2.4.4 System Test Descriptions
+#### 3.4.4 System Test Descriptions
 
 | Test                    | Validates                                                     | Timeout |
 | ----------------------- | ------------------------------------------------------------- | ------- |
@@ -266,7 +368,7 @@ test/system/
 | `test_emergency_stop`   | E-stop triggers, system halts safely, watchdog works          | 2 min   |
 | `test_startup_shutdown` | Startup order, clean shutdown, no zombies/leaks               | 2 min   |
 
-#### 2.4.5 When CI/CD Runs System Tests
+#### 3.4.5 When CI/CD Runs System Tests
 
 | Trigger                        | Tests Run                           |
 | ------------------------------ | ----------------------------------- |
@@ -274,7 +376,7 @@ test/system/
 | **Pre-release**                | All system tests (required to pass) |
 | **Before hardware deployment** | All system tests + manual review    |
 
-#### 2.4.6 Running System Tests
+#### 3.4.6 Running System Tests
 
 **Local (with ROS 2 + Gazebo installed):**
 
@@ -297,7 +399,7 @@ docker-compose down
 docker-compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
-#### 2.4.7 Docker Test Environment
+#### 3.4.7 Docker Test Environment
 
 The system tests run in an isolated Docker environment to ensure reproducibility:
 
@@ -308,7 +410,7 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ---
 
-## 3. Docker Development Environment
+## 4. Docker Development Environment
 
 All development is done inside Docker containers for reproducibility. This ensures:
 
@@ -317,7 +419,7 @@ All development is done inside Docker containers for reproducibility. This ensur
 - Identical dev/CI/production environments
 - Easy onboarding for new developers
 
-### 3.1 Development Container Setup
+### 4.1 Development Container Setup
 
 **Directory:** `docker/` (project root)
 
@@ -329,7 +431,7 @@ docker/
 └── .env.example             # Environment variables template
 ```
 
-### 3.2 Quick Start
+### 4.2 Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -353,7 +455,7 @@ source install/setup.bash
 ros2 launch rc_racer_bringup rc_racer.launch.py
 ```
 
-### 3.3 Development Workflow with Docker
+### 4.3 Development Workflow with Docker
 
 #### Starting the Dev Container
 
@@ -389,7 +491,7 @@ cd docker
 docker-compose down
 ```
 
-### 3.4 GUI Support (Gazebo, RViz)
+### 4.4 GUI Support (Gazebo, RViz)
 
 For visualization tools, X11 forwarding is configured:
 
@@ -404,7 +506,7 @@ docker-compose up -d dev
 ros2 launch gazebo_ros gazebo.launch.py
 ```
 
-### 3.5 Container Architecture
+### 4.5 Container Architecture
 
 | Container       | Purpose                 | Base Image                 |
 | --------------- | ----------------------- | -------------------------- |
@@ -415,11 +517,11 @@ ros2 launch gazebo_ros gazebo.launch.py
 
 ---
 
-## 4. Build & Test Commands
+## 5. Build & Test Commands
 
 > **Note:** All commands below are run **inside the Docker container** unless otherwise specified.
 
-### 4.1 Building
+### 5.1 Building
 
 ```bash
 # Build all packages
@@ -435,7 +537,7 @@ colcon build --cmake-args -DBUILD_TESTING=ON
 rm -rf build install log && colcon build
 ```
 
-### 4.2 Testing
+### 5.2 Testing
 
 ```bash
 # Run all tests (excludes slow system tests)
@@ -454,7 +556,7 @@ colcon test --event-handlers console_direct+
 colcon test --packages-select <package> --ctest-args -R <test_name>
 ```
 
-### 4.3 Code Quality
+### 5.3 Code Quality
 
 ```bash
 # Linting (ament_lint)
@@ -466,31 +568,31 @@ ament_clang_format --check src/<package>
 
 ---
 
-## 5. Adding Tests
+## 6. Adding Tests
 
 > **Note:** All commands below are run **inside the Docker container**.
 
-### 5.1 Adding a New Unit Test (C++)
+### 6.1 Adding a New Unit Test (C++)
 
-1. Create test file in `src/<package>/test/test_<name>.cpp`
+1. Create test file in `src/<package>/test/test_<name>_logic.cpp` (test the logic class!)
 2. Add to `CMakeLists.txt`:
    ```cmake
-   ament_add_gtest(test_<name> test/test_<name>.cpp)
-   target_include_directories(test_<name> PRIVATE include)
-   ament_target_dependencies(test_<name> <dependencies>)
+   ament_add_gtest(test_<name>_logic test/test_<name>_logic.cpp)
+   target_include_directories(test_<name>_logic PRIVATE include)
+   # Note: minimal dependencies - ideally NO ROS deps for logic tests
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 5.2 Adding a New Unit Test (Python)
+### 6.2 Adding a New Unit Test (Python)
 
-1. Create test file in `src/<package>/test/test_<name>.py`
+1. Create test file in `src/<package>/test/test_<name>_logic.py`
 2. Add to `CMakeLists.txt`:
    ```cmake
-   ament_add_pytest_test(test_<name>_py test/test_<name>.py)
+   ament_add_pytest_test(test_<name>_logic_py test/test_<name>_logic.py)
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 5.3 Adding a New Integration Test
+### 6.3 Adding a New Integration Test
 
 1. Copy template: `cp test/integration/launch/test_template.launch.py.example test/integration/launch/test_<name>.launch.py`
 2. Modify the launch file:
@@ -506,7 +608,7 @@ ament_clang_format --check src/<package>
    ```
 4. Run: `colcon test --packages-select rc_racer_integration_tests`
 
-### 5.4 Adding a New System Test
+### 6.4 Adding a New System Test
 
 1. Create launch test file in `test/system/launch/test_<name>.launch.py`
 2. Include:
@@ -527,9 +629,9 @@ ament_clang_format --check src/<package>
 
 ---
 
-## 6. Continuous Integration
+## 7. Continuous Integration
 
-### 6.1 Test Execution by Trigger
+### 7.1 Test Execution by Trigger
 
 | Trigger                    | Unit Tests | Integration Tests | System Tests           |
 | -------------------------- | ---------- | ----------------- | ---------------------- |
@@ -539,7 +641,7 @@ ament_clang_format --check src/<package>
 | **Pre-release**            | ✅ All     | ✅ All            | ✅ All (required)      |
 | **Before hardware deploy** | ✅ All     | ✅ All            | ✅ All + manual review |
 
-### 6.2 CI Pipeline Commands
+### 7.2 CI Pipeline Commands
 
 All CI runs inside the `ci` Docker container for consistency.
 
@@ -554,7 +656,7 @@ colcon test
 cd test/system/docker && docker-compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
-### 6.3 CI Docker Usage
+### 7.3 CI Docker Usage
 
 ```yaml
 # Example GitHub Actions / GitLab CI snippet
@@ -572,9 +674,9 @@ jobs:
 
 ---
 
-## 7. Dependencies
+## 8. Dependencies
 
-### 7.1 Test Dependencies (per package.xml)
+### 8.1 Test Dependencies (per package.xml)
 
 ```xml
 <test_depend>ament_lint_auto</test_depend>
@@ -584,7 +686,7 @@ jobs:
 <test_depend>ros_testing</test_depend>
 ```
 
-### 7.2 System Test Dependencies
+### 8.2 System Test Dependencies
 
 All included in Docker images:
 

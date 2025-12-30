@@ -153,7 +153,25 @@ TEST(StateEstimationLogicTest, UpdateWithImu) {
 └─────────────────────────────┘
 ```
 
-### 3.2 Unit Tests (Node-Local)
+### 3.2 Test Mapping by Package
+
+| Bucket          | Package / Component                     | What We Test                                     |
+| --------------- | --------------------------------------- | ------------------------------------------------ |
+| **Unit**        | `state_estimation`                      | EKF math, covariance updates, prediction step    |
+|                 | `planning_control`                      | Path planner logic, trajectory generation        |
+|                 | `motor_controller`                      | Controller stability, PID tuning, limit clamping |
+|                 | `localization`                          | Coordinate transforms, map lookups               |
+|                 | `object_detection`                      | Detection algorithms, clustering logic           |
+|                 | `safety`                                | State machine transitions, timeout logic         |
+| **Integration** | `state_estimation` ↔ `localization`     | EKF output flows to localization, topics exist   |
+|                 | `localization` → `planning_control`     | Pose updates trigger replanning                  |
+|                 | `planning_control` → `motor_controller` | Commands propagate, timing acceptable            |
+|                 | `safety` ↔ all nodes                    | E-stop propagates, watchdog triggers             |
+| **System**      | Full stack                              | Complete sim lap, cone navigation                |
+|                 | Safety subsystem                        | E-stop behavior, graceful degradation            |
+|                 | Sensor pipeline                         | Sensor dropout handling, recovery                |
+
+### 3.3 Unit Tests (Node-Local)
 
 **Location:** `src/<package>/test/`
 
@@ -204,7 +222,7 @@ ament_target_dependencies(test_my_logic rclcpp std_msgs)
 ament_add_pytest_test(test_my_logic_py test/test_my_logic.py)
 ```
 
-### 3.3 Integration Tests
+### 3.4 Integration Tests
 
 **Purpose:** Test ROS graphs (not individual nodes) with real DDS communication.
 
@@ -219,7 +237,7 @@ colcon test --packages-select rc_racer_integration_tests
 colcon test-result --verbose
 ```
 
-#### 3.3.1 What Integration Tests Do
+#### 3.4.1 What Integration Tests Do
 
 Integration tests launch **multiple real nodes** with **real DDS** to verify:
 
@@ -230,19 +248,19 @@ Integration tests launch **multiple real nodes** with **real DDS** to verify:
 | **State Converges**     | System reaches expected state within timeout      |
 | **Dead Nodes Detected** | Node failures trigger appropriate responses       |
 
-#### 3.3.2 What Integration Tests Do NOT Do
+#### 3.4.2 What Integration Tests Do NOT Do
 
 - Test individual node logic (use unit tests)
 - Test full end-to-end scenarios (use system tests)
 - Test hardware interfaces directly
 
-#### 3.3.3 Framework
+#### 3.4.3 Framework
 
 - **`launch_testing`** - Launch nodes and run assertions
 - **`launch_testing_ros`** - ROS 2 specific test utilities
 - **`launch_testing_ament_cmake`** - CMake integration
 
-#### 3.3.4 Integration Test Structure
+#### 3.4.4 Integration Test Structure
 
 ```
 test/integration/
@@ -257,7 +275,7 @@ test/integration/
     └── test_params.yaml
 ```
 
-#### 3.3.5 Planned Integration Tests
+#### 3.4.5 Planned Integration Tests
 
 | Test Name                 | Nodes Under Test                                   | Assertions                                           |
 | ------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
@@ -266,7 +284,7 @@ test/integration/
 | `test_safety_system`      | safety + all critical nodes                        | E-stop triggers, watchdog works, node death detected |
 | `test_full_graph_startup` | All nodes                                          | All nodes launch, no crashes, all topics exist       |
 
-#### 3.3.6 Example CMakeLists.txt Entry
+#### 3.4.6 Example CMakeLists.txt Entry
 
 ```cmake
 find_package(launch_testing_ament_cmake REQUIRED)
@@ -278,7 +296,7 @@ add_launch_test(
 )
 ```
 
-#### 3.3.7 Launch Test File Structure
+#### 3.4.7 Launch Test File Structure
 
 Each launch test file (`*.launch.py`) contains:
 
@@ -320,7 +338,7 @@ class TestShutdown(unittest.TestCase):
         launch_testing.asserts.assertExitCodes(proc_info)
 ```
 
-### 3.4 System / End-to-End Tests
+### 3.5 System / End-to-End Tests
 
 **Purpose:** Full system validation in simulation with realistic sensors.
 
@@ -328,7 +346,7 @@ class TestShutdown(unittest.TestCase):
 
 **Package:** `rc_racer_system_tests`
 
-#### 3.4.1 Characteristics
+#### 3.5.1 Characteristics
 
 | Property      | Value                                            |
 | ------------- | ------------------------------------------------ |
@@ -336,14 +354,14 @@ class TestShutdown(unittest.TestCase):
 | **Stability** | BRITTLE (sensitive to timing, environment)       |
 | **Value**     | EXTREMELY VALUABLE (catches real-world failures) |
 
-#### 3.4.2 What System Tests Validate
+#### 3.5.2 What System Tests Validate
 
 - **Startup order** - Nodes initialize in correct dependency order
 - **Failure modes** - System handles crashes and failures gracefully
 - **Safety behavior** - E-stop, watchdogs, and safety limits work correctly
 - **Real-time-ish constraints** - Control loops and sensor pipelines meet timing requirements
 
-#### 3.4.3 Test Files
+#### 3.5.3 Test Files
 
 ```
 test/system/
@@ -360,7 +378,7 @@ test/system/
     └── docker-compose.yml               # Orchestrated test runs
 ```
 
-#### 3.4.4 System Test Descriptions
+#### 3.5.4 System Test Descriptions
 
 | Test                    | Validates                                                     | Timeout |
 | ----------------------- | ------------------------------------------------------------- | ------- |
@@ -368,7 +386,7 @@ test/system/
 | `test_emergency_stop`   | E-stop triggers, system halts safely, watchdog works          | 2 min   |
 | `test_startup_shutdown` | Startup order, clean shutdown, no zombies/leaks               | 2 min   |
 
-#### 3.4.5 When CI/CD Runs System Tests
+#### 3.5.5 When CI/CD Runs System Tests
 
 | Trigger                        | Tests Run                           |
 | ------------------------------ | ----------------------------------- |
@@ -376,7 +394,7 @@ test/system/
 | **Pre-release**                | All system tests (required to pass) |
 | **Before hardware deployment** | All system tests + manual review    |
 
-#### 3.4.6 Running System Tests
+#### 3.5.6 Running System Tests
 
 **Local (with ROS 2 + Gazebo installed):**
 
@@ -399,7 +417,7 @@ docker-compose down
 docker-compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
-#### 3.4.7 Docker Test Environment
+#### 3.5.7 Docker Test Environment
 
 The system tests run in an isolated Docker environment to ensure reproducibility:
 

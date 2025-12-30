@@ -437,19 +437,78 @@ All development is done inside Docker containers for reproducibility. This ensur
 - Identical dev/CI/production environments
 - Easy onboarding for new developers
 
-### 4.1 Development Container Setup
+### 4.1 Supported Platforms
 
-**Directory:** `docker/` (project root)
+> **⚠️ Primary Platform: Ubuntu Linux (22.04+)**
+>
+> The setup scripts and Docker configuration are designed for **Ubuntu/Debian Linux**.
+> Other platforms may work but are not officially supported.
 
+| Platform          | Status           | Notes                                                             |
+| ----------------- | ---------------- | ----------------------------------------------------------------- |
+| **Ubuntu 22.04+** | ✅ Supported     | Primary development platform                                      |
+| **Debian 12+**    | ✅ Supported     | Should work identically to Ubuntu                                 |
+| **Other Linux**   | ⚠️ Partial       | May need manual Docker/X11 setup                                  |
+| **macOS**         | ❌ Not Supported | Requires Docker Desktop, XQuartz for GUI, different volume mounts |
+| **Windows**       | ❌ Not Supported | Requires Docker Desktop + WSL2, VcXsrv/WSLg for GUI               |
+
+**Linux-Specific Assumptions:**
+
+- Docker installed via `get.docker.com` or `apt-get`
+- X11 display server (for Gazebo, RViz GUI)
+- `/tmp/.X11-unix` socket for X11 forwarding
+- `/dev/dri` for GPU passthrough (optional)
+
+### 4.2 New Developer Setup (Ubuntu/Debian)
+
+#### Prerequisites
+
+| Requirement        | Version   | Check Command            |
+| ------------------ | --------- | ------------------------ |
+| **Docker**         | 20.10+    | `docker --version`       |
+| **Docker Compose** | V2 (2.0+) | `docker compose version` |
+| **X11** (Linux)    | -         | `echo $DISPLAY`          |
+
+#### Installing Prerequisites (Ubuntu/Debian)
+
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+# LOG OUT AND BACK IN for group changes to take effect
+
+# Install Docker Compose (V2 plugin)
+sudo apt-get install docker-compose-plugin
+
+# Verify
+docker --version
+docker compose version
 ```
-docker/
-├── Dockerfile.dev           # Development environment
-├── Dockerfile.ci            # CI/CD environment (leaner)
-├── docker-compose.yml       # Development orchestration
-└── .env.example             # Environment variables template
+
+#### Automated Setup Script (Recommended)
+
+The setup script checks prerequisites, configures X11, and builds containers:
+
+```bash
+# Clone the repository
+git clone <repo-url> rc-racer && cd rc-racer
+
+# Run the setup script
+./scripts/setup-dev-env.sh
 ```
 
-### 4.2 Quick Start
+**What the script does:**
+
+1. ✅ Checks Docker and Docker Compose are installed
+2. ✅ Configures X11 forwarding for GUI apps (Gazebo, RViz)
+3. ✅ Creates `docker/.env` from template
+4. ✅ Builds the development container
+5. ✅ Verifies the setup works
+
+### 4.3 Manual Setup (Alternative)
+
+If you prefer manual setup or the script fails:
 
 ```bash
 # 1. Clone the repository
@@ -458,22 +517,41 @@ git clone <repo-url> rc-racer && cd rc-racer
 # 2. Copy environment template
 cp docker/.env.example docker/.env
 
-# 3. Build and start development container
+# 3. Allow X11 connections (for GUI apps)
+xhost +local:docker
+
+# 4. Build and start development container
 cd docker
 docker-compose up -d dev
 
-# 4. Enter the container
+# 5. Enter the container
 docker-compose exec dev bash
 
-# 5. (Inside container) Build the workspace
+# 6. (Inside container) Build the workspace
 colcon build
 
-# 6. (Inside container) Source and run
+# 7. (Inside container) Source and run
 source install/setup.bash
 ros2 launch rc_racer_bringup rc_racer.launch.py
 ```
 
-### 4.3 Development Workflow with Docker
+### 4.4 Directory Structure
+
+**Directory:** `docker/` (project root)
+
+```
+docker/
+├── Dockerfile.dev           # Development environment (GUI support)
+├── Dockerfile.ci            # CI/CD environment (lean, no GUI)
+├── Dockerfile               # Production/hardware deployment
+├── docker-compose.yml       # Service orchestration
+└── .env.example             # Environment variables template
+
+scripts/
+└── setup-dev-env.sh         # Automated setup for new developers
+```
+
+### 4.5 Development Workflow with Docker
 
 #### Starting the Dev Container
 
@@ -509,7 +587,7 @@ cd docker
 docker-compose down
 ```
 
-### 4.4 GUI Support (Gazebo, RViz)
+### 4.6 GUI Support (Gazebo, RViz)
 
 For visualization tools, X11 forwarding is configured:
 
@@ -524,7 +602,7 @@ docker-compose up -d dev
 ros2 launch gazebo_ros gazebo.launch.py
 ```
 
-### 4.5 Container Architecture
+### 4.7 Container Architecture
 
 | Container       | Purpose                 | Base Image                 |
 | --------------- | ----------------------- | -------------------------- |

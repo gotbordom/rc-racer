@@ -1,0 +1,7 @@
+# Test configuration files go here
+#
+# Examples:
+#   - test_params.yaml     - Parameter overrides for test nodes
+#   - mock_sensor_data.yaml - Mock sensor configurations
+#   - test_waypoints.yaml  - Test waypoint data
+

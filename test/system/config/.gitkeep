@@ -1,0 +1,7 @@
+# Configuration files for system tests
+#
+# Examples:
+#   - test_params.yaml        - Parameter overrides for test
+#   - sim_sensors.yaml        - Simulated sensor configuration
+#   - test_waypoints.yaml     - Waypoints for navigation tests
+

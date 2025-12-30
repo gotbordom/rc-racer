@@ -1,0 +1,75 @@
+# Docker Compose for RC Racer System Tests
+#
+# Usage:
+#   cd test/system/docker
+#   docker-compose up --abort-on-container-exit
+#   docker-compose down
+#
+# For CI/CD:
+#   docker-compose up --abort-on-container-exit --exit-code-from system-tests
+#
+# When to run:
+#   - Nightly builds
+#   - Pre-release validation  
+#   - Before hardware deployment
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # System Test Runner
+  # ==========================================================================
+  system-tests:
+    build:
+      context: ../../..
+      dockerfile: test/system/docker/Dockerfile
+    container_name: rc-racer-system-tests
+    environment:
+      - ROS_DOMAIN_ID=99  # Isolated domain for testing
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - GAZEBO_MODEL_PATH=/ros2_ws/src/rc-racer/test/system/models
+    volumes:
+      # Mount source for development (optional, remove for CI)
+      # - ../../../src:/ros2_ws/src/rc-racer/src:ro
+      # - ../../../test:/ros2_ws/src/rc-racer/test:ro
+      
+      # X11 for Gazebo GUI (optional, for debugging)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      
+      # Test results output
+      - ./results:/ros2_ws/log:rw
+    networks:
+      - ros-test-network
+    # Override CMD for specific test suites
+    # command: >
+    #   /bin/bash -c "
+    #     source /opt/ros/humble/setup.bash &&
+    #     source /ros2_ws/install/setup.bash &&
+    #     colcon test --packages-select rc_racer_system_tests 
+    #       --ctest-args -R test_emergency_stop
+    #   "
+
+  # ==========================================================================
+  # Gazebo Server (headless for CI)
+  # ==========================================================================
+  gazebo-server:
+    image: osrf/ros:humble-desktop
+    container_name: rc-racer-gazebo
+    environment:
+      - ROS_DOMAIN_ID=99
+      - GAZEBO_MASTER_URI=http://gazebo-server:11345
+    command: >
+      /bin/bash -c "
+        source /opt/ros/humble/setup.bash &&
+        gzserver --verbose /ros2_ws/src/rc-racer/test/system/worlds/test_world.world
+      "
+    networks:
+      - ros-test-network
+    profiles:
+      - simulation  # Only start with: docker-compose --profile simulation up
+
+networks:
+  ros-test-network:
+    driver: bridge
+

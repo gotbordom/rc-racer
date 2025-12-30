@@ -1,0 +1,7 @@
+# Gazebo world files for system tests
+#
+# Examples:
+#   - test_world.world         - Basic test environment
+#   - obstacle_course.world    - Obstacle avoidance testing
+#   - robomagellan_course.world - Competition-like course
+

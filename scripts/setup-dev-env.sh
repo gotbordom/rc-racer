@@ -79,20 +79,16 @@ if ! docker info &> /dev/null; then
     Or if you just added yourself to the docker group, log out and back in."
 fi
 
-# Check Docker Compose
-if ! check_command docker-compose && ! docker compose version &> /dev/null; then
-    error "Docker Compose is not installed. Please install it:
-    
-    Ubuntu/Debian (Docker Compose V2 plugin):
+# Check Docker Compose V2 (CLI plugin)
+if ! docker compose version &> /dev/null; then
+    error "Docker Compose V2 is not installed. Please install it:
+
+    Ubuntu/Debian:
       sudo apt-get install docker-compose-plugin
-    
-    Or standalone:
-      sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose
-      sudo chmod +x /usr/local/bin/docker-compose
-    
+
     See: https://docs.docker.com/compose/install/"
 else
-    success "Docker Compose is available"
+    success "Docker Compose V2 is available"
 fi
 
 echo ""
@@ -155,7 +151,7 @@ echo ""
 
 cd "$PROJECT_ROOT/docker"
 
-if docker compose build dev 2>/dev/null || docker-compose build dev; then
+if docker compose build dev; then
     success "Development container built successfully"
 else
     error "Failed to build development container"
@@ -170,19 +166,18 @@ info "Step 5: Verifying setup..."
 echo ""
 
 # Start container briefly to verify
-if docker compose up -d dev 2>/dev/null || docker-compose up -d dev; then
+if docker compose up -d dev; then
     success "Development container started"
-    
+
     # Quick sanity check
-    if docker compose exec -T dev ros2 --help &>/dev/null 2>&1 || \
-       docker-compose exec -T dev ros2 --help &>/dev/null 2>&1; then
+    if docker compose exec -T dev ros2 --help &>/dev/null 2>&1; then
         success "ROS 2 is working inside container"
     else
         warn "Could not verify ROS 2 (container may still be starting)"
     fi
-    
+
     # Stop the container
-    docker compose stop dev 2>/dev/null || docker-compose stop dev
+    docker compose stop dev
 else
     error "Failed to start development container"
 fi
@@ -199,10 +194,10 @@ echo ""
 info "Next steps:"
 echo ""
 echo "  1. Start the development container:"
-echo "     cd docker && docker-compose up -d dev"
+echo "     cd docker && docker compose up -d dev"
 echo ""
 echo "  2. Enter the container:"
-echo "     docker-compose exec dev bash"
+echo "     docker compose exec dev bash"
 echo ""
 echo "  3. Build the workspace (inside container):"
 echo "     colcon build"

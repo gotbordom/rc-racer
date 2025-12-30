@@ -1,19 +1,17 @@
 # Docker Compose for RC Racer System Tests
 #
-# Usage:
+# Usage (Docker Compose V2 - CLI plugin):
 #   cd test/system/docker
-#   docker-compose up --abort-on-container-exit
-#   docker-compose down
+#   docker compose up --abort-on-container-exit
+#   docker compose down
 #
 # For CI/CD:
-#   docker-compose up --abort-on-container-exit --exit-code-from system-tests
+#   docker compose up --abort-on-container-exit --exit-code-from system-tests
 #
 # When to run:
 #   - Nightly builds
-#   - Pre-release validation  
+#   - Pre-release validation
 #   - Before hardware deployment
-
-version: '3.8'
 
 services:
   # ==========================================================================

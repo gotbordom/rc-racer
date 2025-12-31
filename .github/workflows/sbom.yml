@@ -68,16 +68,19 @@ jobs:
       # =========================================================================
       # C++ Dependency Tracking
       # =========================================================================
+      # Build inside container, mount workspace so build artifacts persist
       - name: Build with compile commands for C++ dependency tracking
-        shell: bash
         run: |
-          source /opt/ros/humble/setup.bash
-          colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-        working-directory: src/rc-racer
+          mkdir -p build install log
+          docker run --rm \
+            -v ${{ github.workspace }}:/ros2_ws \
+            -w /ros2_ws \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            bash -c "source /opt/ros/humble/setup.bash && colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 
       - name: Generate C++ build SBOM
         run: |
-          syft dir:src/rc-racer/build \
+          syft dir:build \
             -o spdx-json=sbom-cpp-build-spdx.json \
             -o cyclonedx-json=sbom-cpp-build-cyclonedx.json
 

@@ -1,0 +1,34 @@
+# =============================================================================
+# pydocstyle (pep257) Configuration - Relaxed
+# =============================================================================
+# Enforces: Docstrings must exist for classes, methods, and functions
+# Relaxes:  Formatting requirements (periods, line length, blank lines)
+#
+# This strikes a balance between documentation enforcement and flexibility.
+# =============================================================================
+
+[pydocstyle]
+
+# -----------------------------------------------------------------------------
+# Ignored codes (formatting nits, not missing docs)
+# -----------------------------------------------------------------------------
+# D100 - Missing docstring in public module (noisy for small modules)
+# D104 - Missing docstring in public package (__init__.py files)
+# D105 - Missing docstring in magic method (__str__, __repr__, etc.)
+# D107 - Missing docstring in __init__ (constructor often self-explanatory)
+# D200 - One-line docstring should fit on one line
+# D203 - 1 blank line before class docstring (conflicts with D211)
+# D205 - 1 blank line between summary and description
+# D212 - Multi-line summary should start at first line (conflicts with D213)
+# D400 - First line should end with a period
+# D401 - First line should be in imperative mood ("Return" not "Returns")
+# D415 - First line should end with period, question mark, or exclamation
+#
+# KEPT (will error if missing):
+# D101 - Missing docstring in public class
+# D102 - Missing docstring in public method
+# D103 - Missing docstring in public function
+# -----------------------------------------------------------------------------
+
+ignore = D100,D104,D105,D107,D200,D203,D205,D212,D400,D401,D415
+

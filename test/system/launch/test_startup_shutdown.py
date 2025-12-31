@@ -1,5 +1,8 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+
 """
-System Test: Startup and Shutdown Sequence
+System Test: Startup and Shutdown Sequence.
 
 Validates:
   - Correct node startup order (dependencies respected)
@@ -27,10 +30,10 @@ CI/CD: Nightly, Pre-release, Before hardware deployment
 """
 
 import unittest
-import subprocess
-import time
-import signal
-import os
+# import subprocess
+# import time
+# import signal
+# import os
 
 # TODO: Import ROS 2 utilities when implementing
 # import rclpy
@@ -40,7 +43,7 @@ import os
 # Expected startup order - safety first, planning last
 EXPECTED_STARTUP_ORDER = [
     'safety',
-    'telemetry', 
+    'telemetry',
     'motor_controller',
     'state_estimation',
     'localization',
@@ -52,7 +55,7 @@ EXPECTED_STARTUP_ORDER = [
 
 class TestStartupSequence(unittest.TestCase):
     """Test system startup behavior."""
-    
+
     def test_startup_order(self):
         """Nodes start in correct dependency order."""
         # TODO:
@@ -60,7 +63,7 @@ class TestStartupSequence(unittest.TestCase):
         # 2. Monitor node startup timestamps
         # 3. Verify order matches EXPECTED_STARTUP_ORDER
         pass
-    
+
     def test_all_nodes_reach_ready(self):
         """All nodes reach ready state within timeout."""
         # TODO:
@@ -68,12 +71,12 @@ class TestStartupSequence(unittest.TestCase):
         # 2. Wait for each node to publish ready status
         # 3. Fail if any node doesn't reach ready within timeout
         pass
-    
+
     def test_safety_node_starts_first(self):
         """Safety node is guaranteed to start before others."""
         # TODO: Verify safety node is running before any other node
         pass
-    
+
     def test_planning_waits_for_dependencies(self):
         """Planning node waits for all dependencies."""
         # TODO: Verify planning doesn't start until localization ready
@@ -82,7 +85,7 @@ class TestStartupSequence(unittest.TestCase):
 
 class TestShutdownSequence(unittest.TestCase):
     """Test system shutdown behavior."""
-    
+
     def test_clean_shutdown(self):
         """System shuts down cleanly on SIGTERM."""
         # TODO:
@@ -91,14 +94,14 @@ class TestShutdownSequence(unittest.TestCase):
         # 3. Send SIGTERM
         # 4. Verify all nodes exit cleanly
         pass
-    
+
     def test_no_zombie_processes(self):
         """No zombie processes after shutdown."""
         # TODO:
         # 1. Launch and shutdown system
         # 2. Check for zombie processes
         pass
-    
+
     def test_shutdown_order(self):
         """Nodes shutdown in reverse startup order."""
         # TODO: Planning should stop first, safety last
@@ -107,7 +110,7 @@ class TestShutdownSequence(unittest.TestCase):
 
 class TestResourceCleanup(unittest.TestCase):
     """Test resource cleanup on shutdown."""
-    
+
     def test_no_memory_leaks(self):
         """No memory leaks after repeated startup/shutdown."""
         # TODO:
@@ -115,12 +118,12 @@ class TestResourceCleanup(unittest.TestCase):
         # 2. Start/stop system N times
         # 3. Verify memory returns to baseline
         pass
-    
+
     def test_no_file_descriptor_leaks(self):
         """No file descriptor leaks after shutdown."""
         # TODO: Check /proc/<pid>/fd before and after
         pass
-    
+
     def test_shared_memory_cleaned(self):
         """ROS 2 shared memory cleaned up."""
         # TODO: Check /dev/shm for leftover ROS artifacts
@@ -129,7 +132,7 @@ class TestResourceCleanup(unittest.TestCase):
 
 class TestRecoveryFromCrash(unittest.TestCase):
     """Test recovery from unexpected crashes."""
-    
+
     def test_restart_after_crash(self):
         """System can restart after crash."""
         # TODO:
@@ -139,7 +142,7 @@ class TestRecoveryFromCrash(unittest.TestCase):
         # 4. Restart full system
         # 5. Verify clean startup
         pass
-    
+
     def test_no_stale_state(self):
         """No stale state after crash and restart."""
         # TODO: Verify fresh state after restart
@@ -148,4 +151,3 @@ class TestRecoveryFromCrash(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

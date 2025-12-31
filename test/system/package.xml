@@ -13,14 +13,18 @@
       - Pre-release validation
       - Before hardware deployment
   </description>
-  <maintainer email="todo@todo.com">TODO</maintainer>
-  <license>TODO</license>
+  <maintainer email="anthony@todo.com">Anthony Tracy</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <!-- Test framework dependencies -->
+  <!-- Note: Using specific linters instead of ament_lint_common to exclude copyright check -->
+  <!-- (SPDX format not recognized by ament_copyright) -->
   <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_flake8</test_depend>
+  <test_depend>ament_cmake_pep257</test_depend>
+  <test_depend>ament_cmake_xmllint</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>

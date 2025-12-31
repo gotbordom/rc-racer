@@ -10,8 +10,8 @@ name: Nightly
 on:
   schedule:
     # Run at 2 AM UTC every day
-    - cron: '0 2 * * *'
-  workflow_dispatch:  # Allow manual trigger
+    - cron: "0 2 * * *"
+  workflow_dispatch: # Allow manual trigger
 
 env:
   ROS_DISTRO: humble
@@ -20,7 +20,7 @@ jobs:
   system-tests:
     runs-on: ubuntu-22.04
     container:
-      image: osrf/ros:humble-ros-base
+      image: ros:humble-ros-base
 
     steps:
       - name: Checkout code
@@ -89,4 +89,3 @@ jobs:
         if: failure()
         run: |
           echo "::error::Nightly build failed! Check test results."
-

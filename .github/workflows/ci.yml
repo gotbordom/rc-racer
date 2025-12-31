@@ -1,0 +1,84 @@
+# =============================================================================
+# RC Racer CI Pipeline
+# =============================================================================
+# Runs on: Push to main, Pull requests
+# Steps: Build, Lint, Test
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  ROS_DISTRO: humble
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-ros-base
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: src/rc-racer
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            cmake \
+            python3-pip \
+            python3-colcon-common-extensions \
+            ros-humble-ament-lint-auto \
+            ros-humble-ament-cmake-flake8 \
+            ros-humble-ament-cmake-pep257 \
+            ros-humble-ament-cmake-xmllint \
+            ros-humble-ament-cmake-gtest \
+            ros-humble-ament-cmake-pytest \
+            ros-humble-launch-testing \
+            ros-humble-launch-testing-ros \
+            ros-humble-launch-testing-ament-cmake \
+            ros-humble-std-msgs \
+            ros-humble-sensor-msgs \
+            ros-humble-geometry-msgs \
+            ros-humble-nav-msgs \
+            ros-humble-vision-msgs \
+            ros-humble-tf2 \
+            ros-humble-tf2-ros \
+            ros-humble-cv-bridge \
+            ros-humble-image-transport \
+            ros-humble-robot-state-publisher \
+            ros-humble-xacro
+          pip3 install --no-cache-dir pytest pytest-cov
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --symlink-install
+        working-directory: .
+
+      - name: Lint and Test
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          colcon test
+          colcon test-result --verbose
+        working-directory: .
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: build/*/test_results/
+          retention-days: 7
+

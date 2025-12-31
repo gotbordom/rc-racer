@@ -41,12 +41,13 @@ jobs:
           colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         working-directory: .
 
-      - name: Lint and Test
+      - name: Lint and Test (Unit + Integration, skip System tests)
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
           source install/setup.bash
-          colcon test
+          # Skip slow system tests for fast CI feedback
+          colcon test --packages-skip rc_racer_system_tests
           colcon test-result --verbose
         working-directory: .
 

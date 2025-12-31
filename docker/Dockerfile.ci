@@ -10,7 +10,7 @@
 #   docker run --rm rc-racer-ci colcon build && colcon test
 # =============================================================================
 
-FROM osrf/ros:humble-ros-base
+FROM ros:humble-ros-base
 
 # Avoid prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

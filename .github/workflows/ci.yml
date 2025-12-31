@@ -3,6 +3,9 @@
 # =============================================================================
 # Runs on: Push to main, Pull requests
 # Steps: Build, Lint, Test
+#
+# Uses pre-built CI image from GHCR for faster builds
+# Image is built by docker-publish.yml workflow
 # =============================================================================
 
 name: CI
@@ -20,43 +23,16 @@ jobs:
   build-and-test:
     runs-on: ubuntu-22.04
     container:
-      image: ros:humble-ros-base
+      image: ghcr.io/${{ github.repository }}-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           path: src/rc-racer
-
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y \
-            build-essential \
-            cmake \
-            python3-pip \
-            python3-colcon-common-extensions \
-            ros-humble-ament-lint-auto \
-            ros-humble-ament-cmake-flake8 \
-            ros-humble-ament-cmake-pep257 \
-            ros-humble-ament-cmake-xmllint \
-            ros-humble-ament-cmake-gtest \
-            ros-humble-ament-cmake-pytest \
-            ros-humble-launch-testing \
-            ros-humble-launch-testing-ros \
-            ros-humble-launch-testing-ament-cmake \
-            ros-humble-std-msgs \
-            ros-humble-sensor-msgs \
-            ros-humble-geometry-msgs \
-            ros-humble-nav-msgs \
-            ros-humble-vision-msgs \
-            ros-humble-tf2 \
-            ros-humble-tf2-ros \
-            ros-humble-cv-bridge \
-            ros-humble-image-transport \
-            ros-humble-robot-state-publisher \
-            ros-humble-xacro
-          pip3 install --no-cache-dir pytest pytest-cov
 
       - name: Build
         shell: bash

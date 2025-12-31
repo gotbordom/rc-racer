@@ -1,5 +1,9 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+
+
 """
-System Test: Full Stack Simulation
+System Test: Full Stack Simulation.
 
 Validates:
   - Complete system running in Gazebo
@@ -18,11 +22,11 @@ CI/CD: Nightly, Pre-release, Before hardware deployment
 import unittest
 
 import launch
-import launch_ros.actions
 import launch_testing
 import launch_testing.actions
 
-# TODO: Import Gazebo launch utilities
+# TODO: Uncomment when implementing tests
+# import launch_ros.actions
 # from launch.actions import IncludeLaunchDescription
 # from launch.launch_description_sources import PythonLaunchDescriptionSource
 
@@ -31,7 +35,7 @@ import launch_testing.actions
 def generate_test_description():
     """
     Launch full system in Gazebo simulation.
-    
+
     This should:
       1. Start Gazebo with RC Racer world
       2. Spawn the robot model
@@ -43,10 +47,10 @@ def generate_test_description():
     #     PythonLaunchDescriptionSource([...]),
     #     launch_arguments={'world': 'rc_racer_test_world.world'}.items()
     # )
-    
+
     # TODO: Spawn robot
     # spawn_robot = ...
-    
+
     # TODO: Launch full stack
     # full_stack = IncludeLaunchDescription(...)
 
@@ -60,12 +64,12 @@ def generate_test_description():
 
 class TestSystemBringup(unittest.TestCase):
     """Verify full system comes up correctly."""
-    
+
     def test_all_nodes_running(self):
         """All expected nodes are alive and responsive."""
         # TODO: Check all nodes are running
         pass
-    
+
     def test_all_topics_exist(self):
         """All expected topics are being published."""
         # TODO: Verify topic graph
@@ -74,17 +78,17 @@ class TestSystemBringup(unittest.TestCase):
 
 class TestSensorSimulation(unittest.TestCase):
     """Verify simulated sensors produce valid data."""
-    
+
     def test_gps_data_valid(self):
         """GPS publishes valid coordinates."""
         # TODO: Subscribe to GPS, verify data format
         pass
-    
+
     def test_imu_data_valid(self):
         """IMU publishes valid orientation/acceleration."""
         # TODO: Subscribe to IMU, verify data
         pass
-    
+
     def test_camera_data_valid(self):
         """Camera publishes valid images."""
         # TODO: Subscribe to camera, verify images
@@ -93,12 +97,12 @@ class TestSensorSimulation(unittest.TestCase):
 
 class TestNavigationPipeline(unittest.TestCase):
     """Verify navigation works end-to-end."""
-    
+
     def test_waypoint_reached(self):
         """Robot can navigate to a waypoint."""
         # TODO: Send waypoint, verify robot reaches it
         pass
-    
+
     def test_obstacle_avoided(self):
         """Robot avoids obstacles in path."""
         # TODO: Place obstacle, verify avoidance
@@ -107,12 +111,12 @@ class TestNavigationPipeline(unittest.TestCase):
 
 class TestRealtimeConstraints(unittest.TestCase):
     """Verify system meets timing requirements."""
-    
+
     def test_control_loop_frequency(self):
         """Control loop runs at expected frequency."""
         # TODO: Measure control loop timing
         pass
-    
+
     def test_sensor_latency(self):
         """Sensor data arrives within latency bounds."""
         # TODO: Measure sensor pipeline latency
@@ -122,9 +126,8 @@ class TestRealtimeConstraints(unittest.TestCase):
 @launch_testing.post_shutdown_test()
 class TestCleanShutdown(unittest.TestCase):
     """Verify system shuts down cleanly."""
-    
+
     def test_exit_codes(self, proc_info):
         """All processes exit with code 0."""
         # launch_testing.asserts.assertExitCodes(proc_info)
         pass
-

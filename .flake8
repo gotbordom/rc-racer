@@ -1,0 +1,29 @@
+# =============================================================================
+# flake8 Configuration
+# =============================================================================
+# Python style and error checking for RC Racer
+# =============================================================================
+
+[flake8]
+
+# Line length - match black formatter default
+max-line-length = 88
+
+# Extend ignore to work well with black formatter
+extend-ignore = E203, E501
+
+# Exclude generated and build directories
+exclude =
+    .git,
+    __pycache__,
+    build,
+    install,
+    log,
+    .venv,
+    venv
+
+# Per-file ignores for test files (allow longer lines, unused imports for fixtures)
+per-file-ignores =
+    test_*.py: E501
+    *_test.py: E501
+

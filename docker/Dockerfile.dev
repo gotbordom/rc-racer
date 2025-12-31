@@ -65,6 +65,9 @@ RUN apt-get update && apt-get install -y \
     # Networking tools
     iputils-ping \
     net-tools \
+    # Shell completion
+    bash-completion \
+    python3-argcomplete \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python development tools
@@ -87,10 +90,22 @@ RUN echo '#!/bin/bash\n\
     fi\n\
     exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
 
-# Set up bashrc for interactive use
-RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
+# Set up bashrc for interactive use with auto-completion
+RUN echo "# Bash completion" >> ~/.bashrc && \
+    echo "source /etc/bash_completion" >> ~/.bashrc && \
+    echo "" >> ~/.bashrc && \
+    echo "# ROS 2 setup" >> ~/.bashrc && \
+    echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
     echo "if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi" >> ~/.bashrc && \
+    echo "" >> ~/.bashrc && \
+    echo "# ROS 2 CLI auto-completion" >> ~/.bashrc && \
+    echo 'eval "$(register-python-argcomplete3 ros2)"' >> ~/.bashrc && \
+    echo 'eval "$(register-python-argcomplete3 colcon)"' >> ~/.bashrc && \
+    echo "" >> ~/.bashrc && \
+    echo "# Environment" >> ~/.bashrc && \
     echo "export ROS_DOMAIN_ID=0" >> ~/.bashrc && \
+    echo "" >> ~/.bashrc && \
+    echo "# Aliases" >> ~/.bashrc && \
     echo "alias cb='colcon build'" >> ~/.bashrc && \
     echo "alias ct='colcon test'" >> ~/.bashrc && \
     echo "alias ctr='colcon test-result --verbose'" >> ~/.bashrc

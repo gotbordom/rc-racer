@@ -1,0 +1,179 @@
+# =============================================================================
+# SBOM & Vulnerability Scanning
+# =============================================================================
+# Generates SBOM on merge to main and scans for vulnerabilities
+#
+# Tools (Anchore ecosystem):
+#   - Syft: SBOM generation (https://github.com/anchore/syft)
+#   - Grype: Vulnerability scanning (https://github.com/anchore/grype)
+#
+# Outputs:
+#   - SPDX & CycloneDX format SBOMs
+#   - Vulnerability reports (JSON, SARIF for GitHub Security tab)
+# =============================================================================
+
+name: SBOM & Security
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-ci
+  # Fail build on HIGH or CRITICAL vulnerabilities
+  GRYPE_FAIL_ON: high
+
+jobs:
+  sbom-and-scan:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: read
+      security-events: write # Required for SARIF upload
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull CI image
+        run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      # =========================================================================
+      # SBOM Generation (Syft)
+      # =========================================================================
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate Docker image SBOM
+        run: |
+          syft ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            -o spdx-json=sbom-image-spdx.json \
+            -o cyclonedx-json=sbom-image-cyclonedx.json
+
+      - name: Generate source code SBOM
+        run: |
+          syft dir:. \
+            -o spdx-json=sbom-source-spdx.json \
+            -o cyclonedx-json=sbom-source-cyclonedx.json
+
+      # =========================================================================
+      # C++ Dependency Tracking
+      # =========================================================================
+      - name: Build with compile commands for C++ dependency tracking
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        working-directory: src/rc-racer
+
+      - name: Generate C++ build SBOM
+        run: |
+          syft dir:src/rc-racer/build \
+            -o spdx-json=sbom-cpp-build-spdx.json \
+            -o cyclonedx-json=sbom-cpp-build-cyclonedx.json
+
+      # =========================================================================
+      # Vulnerability Scanning (Grype)
+      # =========================================================================
+      - name: Install Grype
+        uses: anchore/scan-action/download-grype@v4
+
+      - name: Scan Docker image SBOM for vulnerabilities
+        id: image-scan
+        continue-on-error: true
+        run: |
+          grype sbom:sbom-image-spdx.json \
+            -o json=vuln-image-report.json \
+            -o table=vuln-image-report.txt \
+            -o sarif=vuln-image-report.sarif \
+            --fail-on ${{ env.GRYPE_FAIL_ON }}
+
+      - name: Scan source code SBOM for vulnerabilities
+        id: source-scan
+        continue-on-error: true
+        run: |
+          grype sbom:sbom-source-spdx.json \
+            -o json=vuln-source-report.json \
+            -o table=vuln-source-report.txt \
+            -o sarif=vuln-source-report.sarif \
+            --fail-on ${{ env.GRYPE_FAIL_ON }}
+
+      - name: Scan C++ build SBOM for vulnerabilities
+        id: cpp-scan
+        continue-on-error: true
+        run: |
+          grype sbom:sbom-cpp-build-spdx.json \
+            -o json=vuln-cpp-report.json \
+            -o table=vuln-cpp-report.txt \
+            -o sarif=vuln-cpp-report.sarif \
+            --fail-on ${{ env.GRYPE_FAIL_ON }}
+
+      - name: Display vulnerability summary
+        run: |
+          echo "=== Docker Image Vulnerabilities ==="
+          cat vuln-image-report.txt
+          echo ""
+          echo "=== Source Code Vulnerabilities ==="
+          cat vuln-source-report.txt
+          echo ""
+          echo "=== C++ Build Vulnerabilities ==="
+          cat vuln-cpp-report.txt
+
+      # =========================================================================
+      # Upload Results
+      # =========================================================================
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-*.json
+          retention-days: 90
+
+      - name: Upload vulnerability reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulnerability-reports-${{ github.sha }}
+          path: |
+            vuln-*.json
+            vuln-*.txt
+          retention-days: 90
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: vuln-image-report.sarif
+          category: docker-image
+
+      - name: Upload source SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: vuln-source-report.sarif
+          category: source-code
+
+      - name: Upload C++ SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: vuln-cpp-report.sarif
+          category: cpp-build
+
+      # =========================================================================
+      # Fail if vulnerabilities found
+      # =========================================================================
+      - name: Check scan results
+        if: steps.image-scan.outcome == 'failure' || steps.source-scan.outcome == 'failure' || steps.cpp-scan.outcome == 'failure'
+        run: |
+          echo "::error::HIGH or CRITICAL vulnerabilities found! Check Security tab for details."
+          exit 1

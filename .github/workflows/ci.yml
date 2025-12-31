@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
-          colcon build --symlink-install
+          colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         working-directory: .
 
       - name: Lint and Test

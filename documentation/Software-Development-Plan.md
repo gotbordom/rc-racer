@@ -913,3 +913,95 @@ All included in Docker images:
 - Gazebo (simulation)
 - ros2bag (replay testing)
 - launch_testing (integration tests)
+
+---
+
+## 9. Security & Compliance
+
+### 9.1 SBOM (Software Bill of Materials)
+
+**Purpose:** Track all software components for security auditing, license compliance, and vulnerability management.
+
+**Tool:** [Syft](https://github.com/anchore/syft) (by Anchore)
+
+**Formats Generated:**
+
+| Format    | Standard | File                    | Use Case                   |
+| --------- | -------- | ----------------------- | -------------------------- |
+| SPDX JSON | ISO      | `sbom-*-spdx.json`      | Compliance, license audits |
+| CycloneDX | OWASP    | `sbom-*-cyclonedx.json` | Security tooling, VEX      |
+
+**What's Scanned:**
+
+| Target          | Contents                                     |
+| --------------- | -------------------------------------------- |
+| Docker CI image | apt packages, pip packages, system libraries |
+| Source code     | package.xml, CMakeLists.txt, Python imports  |
+
+**Workflow:** `.github/workflows/sbom.yml` (runs on merge to main)
+
+### 9.2 Vulnerability Scanning
+
+**Tool:** [Grype](https://github.com/anchore/grype) (by Anchore)
+
+**Why Grype?**
+
+- Same ecosystem as Syft (designed to consume Syft-generated SBOMs)
+- Lightweight, single-purpose vulnerability scanner
+- Supports multiple vulnerability databases (NVD, GitHub Advisory, etc.)
+
+**Severity Levels:**
+
+| Level    | Action              |
+| -------- | ------------------- |
+| CRITICAL | ❌ Build fails      |
+| HIGH     | ❌ Build fails      |
+| MEDIUM   | ⚠️ Warning (logged) |
+| LOW      | ℹ️ Info (logged)    |
+
+**Output:**
+
+| File                  | Format | Purpose                          |
+| --------------------- | ------ | -------------------------------- |
+| `vuln-*-report.json`  | JSON   | Machine-readable, CI integration |
+| `vuln-*-report.txt`   | Table  | Human-readable summary           |
+| `vuln-*-report.sarif` | SARIF  | GitHub Security tab integration  |
+
+**Viewing Results:**
+
+- **GitHub UI:** Repository → Security → Code scanning alerts
+- **Artifacts:** Actions → SBOM & Security → Download artifacts
+
+### 9.3 C++ Dependency Tracking
+
+To improve SBOM accuracy for C++ dependencies, enable compile commands export:
+
+```cmake
+# In root CMakeLists.txt or via colcon
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+```
+
+**Build with dependency tracking:**
+
+```bash
+colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+This generates `compile_commands.json` which tools can parse for include paths and dependencies.
+
+### 9.4 Security Workflow Integration
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Merge to  │────▶│    Syft     │────▶│   Grype     │
+│    main     │     │  (SBOM Gen) │     │   (Scan)    │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    │                          │                          │
+                    ▼                          ▼                          ▼
+             ┌─────────────┐           ┌─────────────┐           ┌─────────────┐
+             │  Artifacts  │           │   GitHub    │           │ Build Fail  │
+             │  (90 days)  │           │ Security Tab│           │ (if HIGH+)  │
+             └─────────────┘           └─────────────┘           └─────────────┘
+```

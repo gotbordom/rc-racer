@@ -1,0 +1,92 @@
+# =============================================================================
+# RC Racer Nightly Build
+# =============================================================================
+# Runs: Daily at 2 AM UTC
+# Purpose: Run slow system tests, full validation
+# =============================================================================
+
+name: Nightly
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  ROS_DISTRO: humble
+
+jobs:
+  system-tests:
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-ros-base
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: src/rc-racer
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            cmake \
+            python3-pip \
+            python3-colcon-common-extensions \
+            ros-humble-ament-lint-auto \
+            ros-humble-ament-cmake-flake8 \
+            ros-humble-ament-cmake-pep257 \
+            ros-humble-ament-cmake-xmllint \
+            ros-humble-ament-cmake-gtest \
+            ros-humble-ament-cmake-pytest \
+            ros-humble-launch-testing \
+            ros-humble-launch-testing-ros \
+            ros-humble-launch-testing-ament-cmake \
+            ros-humble-std-msgs \
+            ros-humble-sensor-msgs \
+            ros-humble-geometry-msgs \
+            ros-humble-nav-msgs \
+            ros-humble-vision-msgs \
+            ros-humble-tf2 \
+            ros-humble-tf2-ros \
+            ros-humble-cv-bridge \
+            ros-humble-image-transport \
+            ros-humble-robot-state-publisher \
+            ros-humble-xacro \
+            ros-humble-gazebo-ros \
+            ros-humble-gazebo-plugins
+          pip3 install --no-cache-dir pytest pytest-cov
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --symlink-install
+        working-directory: .
+
+      - name: Run all tests (including system tests)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          # Run all tests with extended timeout for system tests
+          colcon test --event-handlers console_direct+
+          colcon test-result --verbose
+        working-directory: .
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-test-results
+          path: build/*/test_results/
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Nightly build failed! Check test results."
+

@@ -35,6 +35,37 @@ src/<package>/
 └── package.xml          # Package manifest
 ```
 
+### 1.2 License
+
+**License:** MIT License
+
+**SPDX Identifier:** `MIT`
+
+All source files must include a license header using the SPDX format:
+
+```python
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+```
+
+```cpp
+// SPDX-FileCopyrightText: 2025 Anthony Tracy
+// SPDX-License-Identifier: MIT
+```
+
+**Why SPDX format?**
+
+- Machine-readable standard for license identification
+- Concise (2 lines vs. 20+ line license blocks)
+- Widely recognized by license scanning tools
+- Avoids verbose license text in every file
+
+**Full license text:** See `LICENSE` file in repository root.
+
+> **Note:** The `ament_copyright` linter doesn't recognize SPDX format, so we use specific linters
+> (`ament_cmake_flake8`, `ament_cmake_pep257`, `ament_cmake_xmllint`) instead of `ament_lint_common`
+> in test packages.
+
 ---
 
 ## 2. Critical Design Rule: Testable Nodes
@@ -727,7 +758,18 @@ ament_clang_format --check src/<package>
 
 ## 7. Continuous Integration
 
-### 7.1 Test Execution by Trigger
+### 7.1 CI/CD Platform
+
+**Platform:** GitHub Actions
+
+**Workflow Files:** `.github/workflows/`
+
+| Workflow    | File          | Trigger                  | Purpose                    |
+| ----------- | ------------- | ------------------------ | -------------------------- |
+| **CI**      | `ci.yml`      | Push/PR to main, develop | Fast: Build + Lint + Tests |
+| **Nightly** | `nightly.yml` | Daily 2 AM UTC + manual  | Slow: Full system tests    |
+
+### 7.2 Test Execution by Trigger
 
 | Trigger                    | Unit Tests | Integration Tests | System Tests           |
 | -------------------------- | ---------- | ----------------- | ---------------------- |
@@ -737,9 +779,71 @@ ament_clang_format --check src/<package>
 | **Pre-release**            | ✅ All     | ✅ All            | ✅ All (required)      |
 | **Before hardware deploy** | ✅ All     | ✅ All            | ✅ All + manual review |
 
-### 7.2 CI Pipeline Commands
+### 7.3 GitHub Actions Workflows
 
-All CI runs inside the `ci` Docker container for consistency.
+#### CI Workflow (`.github/workflows/ci.yml`)
+
+Runs on every push and pull request to `main` and `develop` branches.
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-ros-base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y ...
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --symlink-install
+      - name: Lint and Test
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          colcon test
+          colcon test-result --verbose
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: build/*/test_results/
+```
+
+#### Nightly Workflow (`.github/workflows/nightly.yml`)
+
+Runs daily at 2 AM UTC, includes Gazebo for system tests.
+
+```yaml
+name: Nightly
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  system-tests:
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-ros-base
+    steps:
+      # ... same as CI but includes gazebo dependencies
+      # ... extended timeouts for system tests
+```
+
+### 7.4 CI Pipeline Commands
+
+All CI runs inside the ROS 2 container for consistency.
 
 ```bash
 # Fast feedback (PR checks) - inside ci container
@@ -752,27 +856,21 @@ colcon test
 cd test/system/docker && docker compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
-### 7.3 CI Docker Usage
+### 7.5 CI Docker Images
 
-```yaml
-# Example GitHub Actions / GitLab CI snippet
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    container:
-      image: rc-racer-ci:latest # Built from docker/Dockerfile.ci
-    steps:
-      - uses: actions/checkout@v3
-      - run: colcon build
-      - run: colcon test --packages-skip rc_racer_system_tests
-      - run: colcon test-result --verbose
-```
+| Container      | Purpose            | Base Image                 |
+| -------------- | ------------------ | -------------------------- |
+| GitHub Actions | CI/CD pipeline     | `osrf/ros:humble-ros-base` |
+| `ci` (local)   | Local CI testing   | `osrf/ros:humble-ros-base` |
+| `system-tests` | System test runner | `osrf/ros:humble-desktop`  |
 
 ---
 
 ## 8. Dependencies
 
 ### 8.1 Test Dependencies (per package.xml)
+
+**Standard packages (C++ nodes):**
 
 ```xml
 <test_depend>ament_lint_auto</test_depend>
@@ -782,7 +880,33 @@ jobs:
 <test_depend>ros_testing</test_depend>
 ```
 
-### 8.2 System Test Dependencies
+**Python-only packages (using SPDX license headers):**
+
+```xml
+<!-- Use specific linters instead of ament_lint_common -->
+<!-- (ament_copyright doesn't recognize SPDX format) -->
+<test_depend>ament_lint_auto</test_depend>
+<test_depend>ament_cmake_flake8</test_depend>
+<test_depend>ament_cmake_pep257</test_depend>
+<test_depend>ament_cmake_xmllint</test_depend>
+<test_depend>ament_cmake_pytest</test_depend>
+```
+
+### 8.2 Linter Configuration
+
+**Files in repository root:**
+
+| File          | Purpose                                               |
+| ------------- | ----------------------------------------------------- |
+| `.flake8`     | Python style checking (line length, ignores)          |
+| `.pydocstyle` | Relaxed pep257 - requires docstrings, flexible format |
+
+**pydocstyle configuration (relaxed):**
+
+- ✅ **Enforced:** Docstrings for classes, methods, functions (D101, D102, D103)
+- ❌ **Ignored:** Formatting nits (D100, D104, D105, D107, D200, D203, D205, D212, D400, D401, D415)
+
+### 8.3 System Test Dependencies
 
 All included in Docker images:
 

@@ -3,6 +3,9 @@
 # =============================================================================
 # Runs: Daily at 2 AM UTC
 # Purpose: Run slow system tests, full validation
+#
+# Uses pre-built CI image from GHCR for faster builds
+# Image is built by docker-publish.yml workflow
 # =============================================================================
 
 name: Nightly
@@ -20,7 +23,10 @@ jobs:
   system-tests:
     runs-on: ubuntu-22.04
     container:
-      image: ros:humble-ros-base
+      image: ghcr.io/${{ github.repository }}-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -28,37 +34,13 @@ jobs:
         with:
           path: src/rc-racer
 
-      - name: Install dependencies
+      # Install Gazebo (not in base CI image to keep it lean)
+      - name: Install Gazebo for system tests
         run: |
           apt-get update
           apt-get install -y \
-            build-essential \
-            cmake \
-            python3-pip \
-            python3-colcon-common-extensions \
-            ros-humble-ament-lint-auto \
-            ros-humble-ament-cmake-flake8 \
-            ros-humble-ament-cmake-pep257 \
-            ros-humble-ament-cmake-xmllint \
-            ros-humble-ament-cmake-gtest \
-            ros-humble-ament-cmake-pytest \
-            ros-humble-launch-testing \
-            ros-humble-launch-testing-ros \
-            ros-humble-launch-testing-ament-cmake \
-            ros-humble-std-msgs \
-            ros-humble-sensor-msgs \
-            ros-humble-geometry-msgs \
-            ros-humble-nav-msgs \
-            ros-humble-vision-msgs \
-            ros-humble-tf2 \
-            ros-humble-tf2-ros \
-            ros-humble-cv-bridge \
-            ros-humble-image-transport \
-            ros-humble-robot-state-publisher \
-            ros-humble-xacro \
             ros-humble-gazebo-ros \
             ros-humble-gazebo-plugins
-          pip3 install --no-cache-dir pytest pytest-cov
 
       - name: Build
         shell: bash

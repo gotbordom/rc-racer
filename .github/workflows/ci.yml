@@ -20,7 +20,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-22.04
     container:
-      image: osrf/ros:humble-ros-base
+      image: ros:humble-ros-base
 
     steps:
       - name: Checkout code
@@ -81,4 +81,3 @@ jobs:
           name: test-results
           path: build/*/test_results/
           retention-days: 7
-

@@ -642,6 +642,167 @@ ros2 launch gazebo_ros gazebo.launch.py
 | `system-tests`  | System test runner      | `osrf/ros:humble-desktop`  |
 | `gazebo-server` | Headless simulation     | `osrf/ros:humble-desktop`  |
 
+### 4.8 Microservice Architecture Roadmap
+
+> **Status: PLANNED** - Currently all packages run in a single container. The roadmap below
+> outlines the transition to a microservice architecture where each ROS package runs in its
+> own container.
+
+#### 4.8.1 Current Architecture (Monolith)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     rc-racer-dev Container                       │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐│
+│  │   state_    │ │ localization│ │   mapping   │ │  object_    ││
+│  │ estimation  │ │             │ │             │ │ detection   ││
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘│
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐│
+│  │  planning_  │ │   motor_    │ │   safety    │ │  telemetry  ││
+│  │   control   │ │ controller  │ │             │ │             ││
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Pros:** Simple setup, fast communication, easy debugging
+**Cons:** Single point of failure, can't scale/update independently
+
+#### 4.8.2 Target Architecture (Microservices)
+
+```
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  state_estimation│  │   localization   │  │     mapping      │
+│    Container     │  │    Container     │  │    Container     │
+│  (ros-network)   │  │  (ros-network)   │  │  (ros-network)   │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │                     │                     │
+         └─────────────────────┼─────────────────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    │    ROS 2 Network    │
+                    │  (DDS Discovery)    │
+                    └──────────┬──────────┘
+                               │
+         ┌─────────────────────┼─────────────────────┐
+         │                     │                     │
+┌────────┴─────────┐  ┌────────┴─────────┐  ┌────────┴─────────┐
+│ planning_control │  │ motor_controller │  │      safety      │
+│    Container     │  │    Container     │  │    Container     │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
+```
+
+**Pros:** Independent scaling, isolated failures, per-package updates
+**Cons:** Network overhead, more complex orchestration
+
+#### 4.8.3 Implementation Phases
+
+| Phase       | Milestone           | Description                                                 |
+| ----------- | ------------------- | ----------------------------------------------------------- |
+| **Phase 0** | ✅ Current          | Monolith - all packages in single container                 |
+| **Phase 1** | Shared Base Image   | Multi-stage Dockerfile with per-package targets             |
+| **Phase 2** | Critical Path Split | Separate `safety` into its own container (highest priority) |
+| **Phase 3** | Perception Split    | Split `object_detection` and `state_estimation`             |
+| **Phase 4** | Full Microservices  | All 8 packages in separate containers                       |
+
+#### 4.8.4 Phase 1: Multi-Stage Dockerfile
+
+Create a single Dockerfile with build targets for each package:
+
+```dockerfile
+# docker/Dockerfile.packages
+# Base stage with common dependencies
+FROM ros:humble-ros-base AS base
+RUN apt-get update && apt-get install -y \
+    ros-humble-tf2 \
+    ros-humble-nav-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build stage
+FROM base AS builder
+COPY src/ /ros2_ws/src/
+WORKDIR /ros2_ws
+RUN . /opt/ros/humble/setup.sh && colcon build
+
+# Per-package runtime images
+FROM base AS state_estimation
+COPY --from=builder /ros2_ws/install/state_estimation /ros2_ws/install/state_estimation
+CMD ["ros2", "run", "state_estimation", "state_estimation_node"]
+
+FROM base AS localization
+COPY --from=builder /ros2_ws/install/localization /ros2_ws/install/localization
+CMD ["ros2", "run", "localization", "localization_node"]
+
+# ... repeat for each package
+```
+
+#### 4.8.5 Phase 1: Docker Compose for Microservices
+
+```yaml
+# docker/docker-compose.microservices.yml (future)
+services:
+  state_estimation:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: state_estimation
+    networks:
+      - ros-network
+    environment:
+      - ROS_DOMAIN_ID=0
+
+  localization:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: localization
+    networks:
+      - ros-network
+    depends_on:
+      - state_estimation
+
+  safety:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: safety
+    networks:
+      - ros-network
+    restart: always # Critical service - auto-restart
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ... additional services
+
+networks:
+  ros-network:
+    driver: bridge
+```
+
+#### 4.8.6 Considerations for Microservice Migration
+
+| Consideration        | Solution                                                        |
+| -------------------- | --------------------------------------------------------------- |
+| **DDS Discovery**    | Use `ROS_DOMAIN_ID` or Fast-DDS Discovery Server                |
+| **Shared TF**        | Run `tf2_ros/static_transform_publisher` in dedicated container |
+| **Parameter Server** | Use `ros2 param` or shared config volume                        |
+| **Logging**          | Centralized logging with mounted volume or log aggregator       |
+| **Health Checks**    | Docker health checks + ROS lifecycle nodes                      |
+| **Startup Order**    | Use `depends_on` with `condition: service_healthy`              |
+
+#### 4.8.7 When to Migrate
+
+Migrate to microservices when:
+
+- ✅ All unit and integration tests pass
+- ✅ System tests demonstrate stable behavior
+- ✅ Performance profiling shows bottlenecks that benefit from isolation
+- ✅ Team needs to deploy/update packages independently
+
+**Do NOT migrate prematurely** - the monolith is simpler for early development.
+
 ---
 
 ## 5. Build & Test Commands

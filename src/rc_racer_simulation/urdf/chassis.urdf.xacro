@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!-- SPDX-FileCopyrightText: 2025 Anthony Tracy -->
+<!-- SPDX-License-Identifier: MIT -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="rc_racer_chassis">
+    
+    <!-- Base footprint (ground plane reference) -->
+    <link name="base_footprint"/>
+
+    <!-- Base link (chassis) -->
+    <link name="base_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+        </geometry>
+        <material name="blue">
+          <color rgba="0.2 0.2 0.8 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${chassis_mass}"/>
+        <inertia
+          ixx="${chassis_mass/12.0 * (chassis_width*chassis_width + chassis_height*chassis_height)}"
+          ixy="0.0"
+          ixz="0.0"
+          iyy="${chassis_mass/12.0 * (chassis_length*chassis_length + chassis_height*chassis_height)}"
+          iyz="0.0"
+          izz="${chassis_mass/12.0 * (chassis_length*chassis_length + chassis_width*chassis_width)}"/>
+      </inertial>
+    </link>
+
+    <!-- Connect base_footprint to base_link -->
+    <joint name="base_footprint_joint" type="fixed">
+      <parent link="base_footprint"/>
+      <child link="base_link"/>
+      <origin xyz="0 0 ${ground_clearance + chassis_height/2 + wheel_radius}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Gazebo colors -->
+    <gazebo reference="base_link">
+      <material>Gazebo/Blue</material>
+    </gazebo>
+
+  </xacro:macro>
+
+</robot>

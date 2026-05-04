@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<!-- SPDX-FileCopyrightText: 2025 Anthony Tracy -->
+<!-- SPDX-License-Identifier: MIT -->
+<!--
+  Empty Course World
+  
+  Basic flat terrain for initial testing of the RC Racer simulation.
+  Features:
+  - Flat ground plane
+  - Basic lighting (sun)
+  - Origin marker
+-->
+<sdf version="1.6">
+  <world name="empty_course">
+    
+    <!-- Physics settings -->
+    <physics type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <!-- Lighting -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- Ground plane -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- Origin marker (for reference) -->
+    <model name="origin_marker">
+      <static>true</static>
+      <pose>0 0 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.1</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Coordinate axes (X=red, Y=green, Z=blue) -->
+    <model name="x_axis">
+      <static>true</static>
+      <pose>0.5 0 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box><size>1.0 0.02 0.02</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="y_axis">
+      <static>true</static>
+      <pose>0 0.5 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box><size>0.02 1.0 0.02</size></box>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- GUI camera position -->
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>-3 -3 2 0 0.4 0.8</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+
+  </world>
+</sdf>

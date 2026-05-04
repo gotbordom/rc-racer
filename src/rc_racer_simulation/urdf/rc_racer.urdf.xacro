@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!-- SPDX-FileCopyrightText: 2025 Anthony Tracy -->
+<!-- SPDX-License-Identifier: MIT -->
+<!--
+  RC Racer Robot Description
+  
+  Based on Traxxas Slash specifications from documentation/Rc-Car-Design.md:
+  - Wheelbase: 384 mm
+  - Wheel Diameter: 67.4 mm  
+  - Wheel Width: 28.5 mm
+-->
+<robot name="rc_racer" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Include component files -->
+  <xacro:include filename="$(find rc_racer_simulation)/urdf/chassis.urdf.xacro"/>
+  <xacro:include filename="$(find rc_racer_simulation)/urdf/wheels.urdf.xacro"/>
+  <xacro:include filename="$(find rc_racer_simulation)/urdf/sensors.urdf.xacro"/>
+
+  <!-- Robot Parameters (from Rc-Car-Design.md) -->
+  <xacro:property name="wheelbase" value="0.384"/>
+  <xacro:property name="track_width" value="0.30"/>
+  <xacro:property name="wheel_radius" value="0.0337"/>
+  <xacro:property name="wheel_width" value="0.0285"/>
+  
+  <!-- Chassis dimensions (approximate) -->
+  <xacro:property name="chassis_length" value="0.50"/>
+  <xacro:property name="chassis_width" value="0.25"/>
+  <xacro:property name="chassis_height" value="0.10"/>
+  <xacro:property name="chassis_mass" value="3.0"/>
+  
+  <!-- Ground clearance -->
+  <xacro:property name="ground_clearance" value="0.05"/>
+
+  <!-- Instantiate components -->
+  <xacro:rc_racer_chassis/>
+  <xacro:rc_racer_wheels/>
+  <xacro:rc_racer_sensors/>
+
+</robot>

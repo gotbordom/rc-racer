@@ -15,7 +15,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, Command, PythonExpression
@@ -58,30 +58,23 @@ def generate_launch_description():
         value_type=str
     )
 
-    # Gazebo with GUI (for development)
-    gazebo_with_gui = IncludeLaunchDescription(
+    # Gazebo server (physics + sensors, no GUI) - always runs
+    gzserver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')
+            os.path.join(pkg_gazebo_ros, 'launch', 'gzserver.launch.py')
         ),
         launch_arguments={
             'world': world_path,
             'verbose': 'true',
-            'gui': 'true',
-        }.items(),
-        condition=UnlessCondition(LaunchConfiguration('headless'))
+        }.items()
     )
 
-    # Gazebo headless (for CI)
-    gazebo_headless = IncludeLaunchDescription(
+    # Gazebo client (GUI) - only when not headless
+    gzclient = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')
+            os.path.join(pkg_gazebo_ros, 'launch', 'gzclient.launch.py')
         ),
-        launch_arguments={
-            'world': world_path,
-            'verbose': 'true',
-            'gui': 'false',
-        }.items(),
-        condition=IfCondition(LaunchConfiguration('headless'))
+        condition=UnlessCondition(LaunchConfiguration('headless'))
     )
 
     # Robot state publisher
@@ -123,8 +116,8 @@ def generate_launch_description():
         world_arg,
         use_sim_time_arg,
         headless_arg,
-        gazebo_with_gui,
-        gazebo_headless,
+        gzserver,
+        gzclient,
         robot_state_publisher,
         joint_state_publisher,
         spawn_robot,

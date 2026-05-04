@@ -19,6 +19,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -44,8 +45,11 @@ def generate_launch_description():
     world_path = [pkg_rc_racer_sim, '/worlds/', LaunchConfiguration('world')]
     urdf_path = os.path.join(pkg_rc_racer_sim, 'urdf', 'rc_racer.urdf.xacro')
 
-    # Process URDF with xacro
-    robot_description = Command(['xacro ', urdf_path])
+    # Process URDF with xacro - wrap in ParameterValue to avoid YAML parsing issues
+    robot_description = ParameterValue(
+        Command(['xacro ', urdf_path]),
+        value_type=str
+    )
 
     # Gazebo server
     gazebo = IncludeLaunchDescription(

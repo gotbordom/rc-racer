@@ -1,0 +1,63 @@
+# =============================================================================
+# RC Racer Simulation Container
+# =============================================================================
+# Standalone Gazebo simulation environment
+# Publishes sensor data that other containers can subscribe to
+#
+# Build:
+#   docker compose build simulation
+#
+# Run:
+#   docker compose up simulation
+# =============================================================================
+
+FROM osrf/ros:humble-desktop
+
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Gazebo and simulation dependencies
+RUN apt-get update && apt-get install -y \
+    # Gazebo and ROS integration
+    ros-humble-gazebo-ros \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-plugins \
+    # Robot description
+    ros-humble-robot-state-publisher \
+    ros-humble-joint-state-publisher \
+    ros-humble-xacro \
+    ros-humble-urdf \
+    # TF
+    ros-humble-tf2 \
+    ros-humble-tf2-ros \
+    # Build tools
+    python3-colcon-common-extensions \
+    # Utilities
+    ros-humble-rqt \
+    ros-humble-rviz2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up workspace
+WORKDIR /ros2_ws
+
+# Copy only the simulation package (not the whole repo)
+COPY src/rc_racer_simulation /ros2_ws/src/rc_racer_simulation
+
+# Build the simulation package
+RUN . /opt/ros/humble/setup.sh && \
+    colcon build --packages-select rc_racer_simulation && \
+    rm -rf /ros2_ws/log /ros2_ws/build/rc_racer_simulation/CMakeFiles
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+source /opt/ros/humble/setup.bash\n\
+source /ros2_ws/install/setup.bash\n\
+exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
+
+# Environment for ROS 2 cross-container communication
+ENV ROS_DOMAIN_ID=0
+ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py"]

@@ -1,21 +1,56 @@
 # =============================================================================
-# RC Racer Docker Compose
+# RC Racer Docker Compose - Microservices Architecture
 # =============================================================================
-# Development, testing, and hardware deployment orchestration
+# Each ROS 2 package runs in its own container, communicating via DDS
 #
 # Usage (Docker Compose V2 - CLI plugin):
-#   docker compose up -d dev       # Start dev container (simulation)
-#   docker compose exec dev bash   # Enter dev container
-#   docker compose up -d hardware  # Start hardware container (on robot)
-#   docker compose down            # Stop all containers
+#   docker compose up -d simulation  # Start Gazebo simulation
+#   docker compose up -d dev         # Start dev container for building/testing
+#   docker compose exec dev bash     # Enter dev container
+#   docker compose up simulation dev # Run both together
+#   docker compose down              # Stop all containers
+#
+# Cross-container communication:
+#   All containers share 'ros-network' and ROS_DOMAIN_ID=0
+#   Topics published by simulation are visible in dev container
 # =============================================================================
 
 services:
   # ===========================================================================
-  # Development Container (Simulation)
+  # Simulation Container (Gazebo + Sensors)
   # ===========================================================================
-  # Interactive development with GUI support (Gazebo, RViz)
-  # Use on development machine, not on robot hardware
+  # Standalone simulation environment - publishes sensor topics
+  # Other containers subscribe to: /imu/data, /gps/fix, /camera/image_raw
+  simulation:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.simulation
+    image: rc-racer-simulation:latest
+    container_name: rc-racer-simulation
+    hostname: rc-racer-simulation
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      # X11 for Gazebo GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # GPU support (if available)
+      - /dev/dri:/dev/dri
+    networks:
+      - ros-network
+    # Default: launch simulation
+    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py"]
+
+  # ===========================================================================
+  # Development Container (Building & Testing)
+  # ===========================================================================
+  # Interactive development - builds and runs your ROS 2 nodes
+  # Connects to simulation container via shared network
   dev:
     build:
       context: ..
@@ -31,6 +66,7 @@ services:
       - QT_X11_NO_MITSHM=1
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     volumes:
       # Mount source code (edits on host are immediately available)
       - ../src:/ros2_ws/src/rc-racer/src:rw
@@ -53,6 +89,7 @@ services:
   # CI Container
   # ===========================================================================
   # Lean container for running tests (no GUI)
+  # Uses separate ROS_DOMAIN_ID to avoid interference with simulation
   ci:
     build:
       context: ..
@@ -61,6 +98,7 @@ services:
     container_name: rc-racer-ci
     environment:
       - ROS_DOMAIN_ID=99
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     volumes:
       - ../src:/ros2_ws/src/rc-racer/src:ro
       - ../test:/ros2_ws/src/rc-racer/test:ro
@@ -73,6 +111,27 @@ services:
         colcon test --packages-skip rc_racer_system_tests &&
         colcon test-result --verbose
       "
+
+  # ===========================================================================
+  # CI with Simulation (for integration/system tests)
+  # ===========================================================================
+  # Runs simulation + tests together for full integration testing
+  ci-with-sim:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.simulation
+    image: rc-racer-simulation:latest
+    container_name: rc-racer-ci-sim
+    environment:
+      - ROS_DOMAIN_ID=99
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # Headless mode for CI
+      - DISPLAY=
+      - LIBGL_ALWAYS_SOFTWARE=1
+    networks:
+      - ros-network
+    # Start Gazebo in headless/server mode
+    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py"]
 
   # ===========================================================================
   # Hardware Container (On Robot)

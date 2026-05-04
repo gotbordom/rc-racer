@@ -16,8 +16,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, Command
+from launch.substitutions import LaunchConfiguration, Command, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -41,6 +42,12 @@ def generate_launch_description():
         description='Use simulation clock'
     )
 
+    headless_arg = DeclareLaunchArgument(
+        'headless',
+        default_value='false',
+        description='Run Gazebo in headless mode (no GUI)'
+    )
+
     # Paths
     world_path = [pkg_rc_racer_sim, '/worlds/', LaunchConfiguration('world')]
     urdf_path = os.path.join(pkg_rc_racer_sim, 'urdf', 'rc_racer.urdf.xacro')
@@ -51,15 +58,30 @@ def generate_launch_description():
         value_type=str
     )
 
-    # Gazebo server
-    gazebo = IncludeLaunchDescription(
+    # Gazebo with GUI (for development)
+    gazebo_with_gui = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')
         ),
         launch_arguments={
             'world': world_path,
             'verbose': 'true',
-        }.items()
+            'gui': 'true',
+        }.items(),
+        condition=UnlessCondition(LaunchConfiguration('headless'))
+    )
+
+    # Gazebo headless (for CI)
+    gazebo_headless = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, 'launch', 'gazebo.launch.py')
+        ),
+        launch_arguments={
+            'world': world_path,
+            'verbose': 'true',
+            'gui': 'false',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('headless'))
     )
 
     # Robot state publisher
@@ -100,7 +122,9 @@ def generate_launch_description():
     return LaunchDescription([
         world_arg,
         use_sim_time_arg,
-        gazebo,
+        headless_arg,
+        gazebo_with_gui,
+        gazebo_headless,
         robot_state_publisher,
         joint_state_publisher,
         spawn_robot,

@@ -17,9 +17,9 @@
 
 services:
   # ===========================================================================
-  # Simulation Container (Gazebo + Sensors)
+  # Simulation Container - Headless (for CI / no GUI)
   # ===========================================================================
-  # Standalone simulation environment - publishes sensor topics
+  # Runs Gazebo server without GUI - use for CI and automated testing
   # Other containers subscribe to: /imu/data, /gps/fix, /camera/image_raw
   simulation:
     build:
@@ -27,6 +27,28 @@ services:
       dockerfile: docker/Dockerfile.simulation
     image: rc-racer-simulation:latest
     container_name: rc-racer-simulation
+    hostname: rc-racer-simulation
+    stdin_open: true
+    tty: true
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    networks:
+      - ros-network
+    # Headless mode - no GUI
+    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py", "headless:=true"]
+
+  # ===========================================================================
+  # Simulation Container - With GUI (for development)
+  # ===========================================================================
+  # Runs Gazebo with GUI - requires: xhost +local:docker
+  simulation-gui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.simulation
+    image: rc-racer-simulation:latest
+    container_name: rc-racer-simulation-gui
     hostname: rc-racer-simulation
     stdin_open: true
     tty: true
@@ -43,8 +65,8 @@ services:
       - /dev/dri:/dev/dri
     networks:
       - ros-network
-    # Default: launch simulation
-    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py"]
+    # GUI mode
+    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py", "headless:=false"]
 
   # ===========================================================================
   # Development Container (Building & Testing)

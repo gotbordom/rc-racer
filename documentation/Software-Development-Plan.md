@@ -10,10 +10,25 @@ This document outlines the software development plan for the RC Racer autonomous
 
 **Development Environment:** All development, building, and testing is done inside Docker containers for reproducibility and isolation.
 
-### 1.1 Package Structure
+**Development Approach:** Simulation-first development - build and validate in Gazebo before deploying to hardware.
+
+### 1.1 Development Roadmap
+
+> **Current Phase: Simulation Environment**
+
+| Phase                    | Status         | Description                                  |
+| ------------------------ | -------------- | -------------------------------------------- |
+| **Phase 1: Simulation**  | 🚧 In Progress | Gazebo world, robot model, sensor simulation |
+| **Phase 2: Perception**  | ⏳ Planned     | Object detection, state estimation           |
+| **Phase 3: Navigation**  | ⏳ Planned     | Localization, mapping, path planning         |
+| **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems                |
+| **Phase 5: Integration** | ⏳ Planned     | Full system integration, hardware deployment |
+
+### 1.2 Package Structure
 
 ```
 src/
+├── rc_racer_simulation/ # Gazebo world, robot model, sensors (Phase 1)
 ├── state_estimation/    # Sensor fusion and state tracking
 ├── localization/        # GPS + IMU + camera positioning
 ├── mapping/             # 2D weighted obstacle/terrain mapping
@@ -35,7 +50,7 @@ src/<package>/
 └── package.xml          # Package manifest
 ```
 
-### 1.2 License
+### 1.3 License
 
 **License:** MIT License
 
@@ -459,7 +474,118 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ---
 
-## 4. Docker Development Environment
+## 4. Simulation Environment (Phase 1)
+
+> **This is the current development priority.**
+
+Simulation-first development allows testing without hardware, faster iteration, and reproducible test scenarios.
+
+### 4.1 Simulation Package Structure
+
+```
+src/rc_racer_simulation/
+├── CMakeLists.txt
+├── package.xml
+├── urdf/
+│   ├── rc_racer.urdf.xacro      # Main robot description
+│   ├── chassis.urdf.xacro       # Chassis geometry
+│   ├── wheels.urdf.xacro        # Wheel joints and geometry
+│   └── sensors.urdf.xacro       # Sensor mounts and plugins
+├── meshes/                       # 3D models (optional, can use primitives)
+│   └── chassis.stl
+├── worlds/
+│   ├── empty_course.world       # Basic testing world
+│   ├── cone_course.world        # Course with orange cones
+│   └── outdoor_terrain.world    # Varied terrain (grass, dirt, hills)
+├── config/
+│   └── gazebo_params.yaml       # Simulation parameters
+└── launch/
+    ├── gazebo.launch.py         # Launch Gazebo world only
+    ├── spawn_robot.launch.py    # Spawn robot into running Gazebo
+    └── simulation.launch.py     # Full simulation (world + robot + sensors)
+```
+
+### 4.2 Robot Model (URDF)
+
+Based on Traxxas Slash hardware specifications from `documentation/Rc-Car-Design.md`:
+
+| Component         | Value   | Source           |
+| ----------------- | ------- | ---------------- |
+| Wheelbase         | 384 mm  | Rc-Car-Design.md |
+| Wheel Diameter    | 67.4 mm | Rc-Car-Design.md |
+| Wheel Width       | 28.5 mm | Rc-Car-Design.md |
+| Final Drive Ratio | 9.384:1 | Rc-Car-Design.md |
+| Encoder PPR       | 128     | Rc-Car-Design.md |
+
+### 4.3 Simulated Sensors
+
+| Sensor             | Gazebo Plugin           | ROS Topic           | Update Rate |
+| ------------------ | ----------------------- | ------------------- | ----------- |
+| **GPS**            | `gazebo_ros_gps_sensor` | `/gps/fix`          | 10 Hz       |
+| **IMU**            | `gazebo_ros_imu_sensor` | `/imu/data`         | 100 Hz      |
+| **Camera**         | `gazebo_ros_camera`     | `/camera/image_raw` | 30 Hz       |
+| **Wheel Encoders** | `gazebo_ros_diff_drive` | `/odom`             | 50 Hz       |
+
+### 4.4 Gazebo World Features
+
+**Empty Course** (`empty_course.world`):
+
+- Flat ground plane
+- Basic lighting
+- For initial testing
+
+**Cone Course** (`cone_course.world`):
+
+- Orange traffic cones as waypoints
+- Start/finish markers
+- For navigation testing
+
+**Outdoor Terrain** (`outdoor_terrain.world`):
+
+- Height map terrain (grass, dirt, hills)
+- Varied friction coefficients
+- For realistic testing
+
+### 4.5 Phase 1 Implementation Tasks
+
+| Task | Commit                                           | Description                                          |
+| ---- | ------------------------------------------------ | ---------------------------------------------------- |
+| 1    | `simulation: Create rc_racer_simulation package` | package.xml, CMakeLists.txt, directory structure     |
+| 2    | `simulation: Add basic URDF robot model`         | Chassis, wheels, joints based on Traxxas Slash specs |
+| 3    | `simulation: Add sensor plugins to URDF`         | GPS, IMU, camera Gazebo plugins                      |
+| 4    | `simulation: Create empty_course world`          | Basic Gazebo world for testing                       |
+| 5    | `simulation: Create simulation launch file`      | Launch Gazebo + spawn robot                          |
+| 6    | `simulation: Verify in Docker`                   | Test X11 GUI works in dev container                  |
+| 7    | `simulation: Add cone_course world`              | Course with orange cone waypoints                    |
+| 8    | `simulation: Connect to system tests`            | Update test_full_stack_sim.launch.py                 |
+
+### 4.6 Running the Simulation
+
+**Start simulation (inside Docker container):**
+
+```bash
+# Terminal 1: Start dev container
+docker compose up -d dev
+docker compose exec dev bash
+
+# Terminal 2 (inside container): Launch simulation
+ros2 launch rc_racer_simulation simulation.launch.py
+
+# Terminal 3 (inside container): Verify topics
+ros2 topic list
+ros2 topic echo /gps/fix
+ros2 topic echo /imu/data
+```
+
+**Launch with specific world:**
+
+```bash
+ros2 launch rc_racer_simulation simulation.launch.py world:=cone_course.world
+```
+
+---
+
+## 5. Docker Development Environment
 
 All development is done inside Docker containers for reproducibility. This ensures:
 
@@ -468,7 +594,7 @@ All development is done inside Docker containers for reproducibility. This ensur
 - Identical dev/CI/production environments
 - Easy onboarding for new developers
 
-### 4.1 Supported Platforms
+### 5.1 Supported Platforms
 
 > **⚠️ Primary Platform: Ubuntu Linux (22.04+)**
 >
@@ -490,7 +616,7 @@ All development is done inside Docker containers for reproducibility. This ensur
 - `/tmp/.X11-unix` socket for X11 forwarding
 - `/dev/dri` for GPU passthrough (optional)
 
-### 4.2 New Developer Setup (Ubuntu/Debian)
+### 5.2 New Developer Setup (Ubuntu/Debian)
 
 #### Prerequisites
 
@@ -537,7 +663,7 @@ git clone <repo-url> rc-racer && cd rc-racer
 4. ✅ Builds the development container
 5. ✅ Verifies the setup works
 
-### 4.3 Manual Setup (Alternative)
+### 5.3 Manual Setup (Alternative)
 
 If you prefer manual setup or the script fails:
 
@@ -566,7 +692,7 @@ source install/setup.bash
 ros2 launch rc_racer_bringup rc_racer.launch.py
 ```
 
-### 4.4 Directory Structure
+### 5.4 Directory Structure
 
 **Directory:** `docker/` (project root)
 
@@ -582,7 +708,7 @@ scripts/
 └── setup-dev-env.sh         # Automated setup for new developers
 ```
 
-### 4.5 Development Workflow with Docker
+### 5.5 Development Workflow with Docker
 
 #### Starting the Dev Container
 
@@ -618,7 +744,7 @@ cd docker
 docker compose down
 ```
 
-### 4.6 GUI Support (Gazebo, RViz)
+### 5.6 GUI Support (Gazebo, RViz)
 
 For visualization tools, X11 forwarding is configured:
 
@@ -633,7 +759,7 @@ docker compose up -d dev
 ros2 launch gazebo_ros gazebo.launch.py
 ```
 
-### 4.7 Container Architecture
+### 5.7 Container Architecture
 
 | Container       | Purpose                 | Base Image                 |
 | --------------- | ----------------------- | -------------------------- |
@@ -642,7 +768,7 @@ ros2 launch gazebo_ros gazebo.launch.py
 | `system-tests`  | System test runner      | `osrf/ros:humble-desktop`  |
 | `gazebo-server` | Headless simulation     | `osrf/ros:humble-desktop`  |
 
-### 4.8 Microservice Architecture Roadmap
+### 5.8 Microservice Architecture Roadmap
 
 > **Status: PLANNED** - Currently all packages run in a single container. The roadmap below
 > outlines the transition to a microservice architecture where each ROS package runs in its
@@ -805,11 +931,11 @@ Migrate to microservices when:
 
 ---
 
-## 5. Build & Test Commands
+## 6. Build & Test Commands
 
 > **Note:** All commands below are run **inside the Docker container** unless otherwise specified.
 
-### 5.1 Building
+### 6.1 Building
 
 ```bash
 # Build all packages
@@ -825,7 +951,7 @@ colcon build --cmake-args -DBUILD_TESTING=ON
 rm -rf build install log && colcon build
 ```
 
-### 5.2 Testing
+### 6.2 Testing
 
 ```bash
 # Run all tests (excludes slow system tests)
@@ -844,7 +970,7 @@ colcon test --event-handlers console_direct+
 colcon test --packages-select <package> --ctest-args -R <test_name>
 ```
 
-### 5.3 Code Quality
+### 6.3 Code Quality
 
 ```bash
 # Linting (ament_lint)
@@ -856,11 +982,11 @@ ament_clang_format --check src/<package>
 
 ---
 
-## 6. Adding Tests
+## 7. Adding Tests
 
 > **Note:** All commands below are run **inside the Docker container**.
 
-### 6.1 Adding a New Unit Test (C++)
+### 7.1 Adding a New Unit Test (C++)
 
 1. Create test file in `src/<package>/test/test_<name>_logic.cpp` (test the logic class!)
 2. Add to `CMakeLists.txt`:
@@ -871,7 +997,7 @@ ament_clang_format --check src/<package>
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 6.2 Adding a New Unit Test (Python)
+### 7.2 Adding a New Unit Test (Python)
 
 1. Create test file in `src/<package>/test/test_<name>_logic.py`
 2. Add to `CMakeLists.txt`:
@@ -880,7 +1006,7 @@ ament_clang_format --check src/<package>
    ```
 3. Run: `colcon test --packages-select <package>`
 
-### 6.3 Adding a New Integration Test
+### 7.3 Adding a New Integration Test
 
 1. Copy template: `cp test/integration/launch/test_template.launch.py.example test/integration/launch/test_<name>.launch.py`
 2. Modify the launch file:
@@ -896,7 +1022,7 @@ ament_clang_format --check src/<package>
    ```
 4. Run: `colcon test --packages-select rc_racer_integration_tests`
 
-### 6.4 Adding a New System Test
+### 7.4 Adding a New System Test
 
 1. Create launch test file in `test/system/launch/test_<name>.launch.py`
 2. Include:
@@ -917,9 +1043,9 @@ ament_clang_format --check src/<package>
 
 ---
 
-## 7. Continuous Integration
+## 8. Continuous Integration
 
-### 7.1 CI/CD Platform
+### 8.1 CI/CD Platform
 
 **Platform:** GitHub Actions
 
@@ -930,7 +1056,7 @@ ament_clang_format --check src/<package>
 | **CI**      | `ci.yml`      | Push/PR to main, develop | Fast: Build + Lint + Tests |
 | **Nightly** | `nightly.yml` | Daily 2 AM UTC + manual  | Slow: Full system tests    |
 
-### 7.2 Test Execution by Trigger
+### 8.2 Test Execution by Trigger
 
 | Trigger                    | Unit Tests | Integration Tests | System Tests           |
 | -------------------------- | ---------- | ----------------- | ---------------------- |
@@ -940,7 +1066,7 @@ ament_clang_format --check src/<package>
 | **Pre-release**            | ✅ All     | ✅ All            | ✅ All (required)      |
 | **Before hardware deploy** | ✅ All     | ✅ All            | ✅ All + manual review |
 
-### 7.3 GitHub Actions Workflows
+### 8.3 GitHub Actions Workflows
 
 #### CI Workflow (`.github/workflows/ci.yml`)
 
@@ -1002,7 +1128,7 @@ jobs:
       # ... extended timeouts for system tests
 ```
 
-### 7.4 CI Pipeline Commands
+### 8.4 CI Pipeline Commands
 
 All CI runs inside the ROS 2 container for consistency.
 
@@ -1017,7 +1143,7 @@ colcon test
 cd test/system/docker && docker compose up --abort-on-container-exit --exit-code-from system-tests
 ```
 
-### 7.5 CI Docker Images
+### 8.5 CI Docker Images
 
 | Container      | Purpose            | Base Image                 |
 | -------------- | ------------------ | -------------------------- |
@@ -1027,9 +1153,9 @@ cd test/system/docker && docker compose up --abort-on-container-exit --exit-code
 
 ---
 
-## 8. Dependencies
+## 9. Dependencies
 
-### 8.1 Test Dependencies (per package.xml)
+### 9.1 Test Dependencies (per package.xml)
 
 **Standard packages (C++ nodes):**
 
@@ -1053,7 +1179,7 @@ cd test/system/docker && docker compose up --abort-on-container-exit --exit-code
 <test_depend>ament_cmake_pytest</test_depend>
 ```
 
-### 8.2 Linter Configuration
+### 9.2 Linter Configuration
 
 **Files in repository root:**
 
@@ -1067,7 +1193,7 @@ cd test/system/docker && docker compose up --abort-on-container-exit --exit-code
 - ✅ **Enforced:** Docstrings for classes, methods, functions (D101, D102, D103)
 - ❌ **Ignored:** Formatting nits (D100, D104, D105, D107, D200, D203, D205, D212, D400, D401, D415)
 
-### 8.3 System Test Dependencies
+### 9.3 System Test Dependencies
 
 All included in Docker images:
 
@@ -1077,9 +1203,9 @@ All included in Docker images:
 
 ---
 
-## 9. Security & Compliance
+## 10. Security & Compliance
 
-### 9.1 SBOM (Software Bill of Materials)
+### 10.1 SBOM (Software Bill of Materials)
 
 **Purpose:** Track all software components for security auditing, license compliance, and vulnerability management.
 
@@ -1101,7 +1227,7 @@ All included in Docker images:
 
 **Workflow:** `.github/workflows/sbom.yml` (runs on merge to main)
 
-### 9.2 Vulnerability Scanning
+### 10.2 Vulnerability Scanning
 
 **Tool:** [Grype](https://github.com/anchore/grype) (by Anchore)
 
@@ -1133,7 +1259,7 @@ All included in Docker images:
 - **GitHub UI:** Repository → Security → Code scanning alerts
 - **Artifacts:** Actions → SBOM & Security → Download artifacts
 
-### 9.3 C++ Dependency Tracking
+### 10.3 C++ Dependency Tracking
 
 To improve SBOM accuracy for C++ dependencies, enable compile commands export:
 
@@ -1150,7 +1276,7 @@ colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 This generates `compile_commands.json` which tools can parse for include paths and dependencies.
 
-### 9.4 Security Workflow Integration
+### 10.4 Security Workflow Integration
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐

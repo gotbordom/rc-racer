@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 """
-RC Racer Simulation Launch File.
+RC Racer Simulation Launch File - Gazebo Fortress.
 
-Launches Gazebo with the RC Racer robot model and sensors.
+Launches Gazebo Fortress with the RC Racer robot model and sensors.
+Uses ros_gz_bridge to connect Gazebo topics to ROS 2.
 
 Usage:
     ros2 launch rc_racer_simulation simulation.launch.py
-    ros2 launch rc_racer_simulation simulation.launch.py world:=cone_course.world
+    ros2 launch rc_racer_simulation simulation.launch.py headless:=true
 """
 
 import os
@@ -18,7 +19,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, Command, PythonExpression
+from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -27,7 +28,7 @@ def generate_launch_description():
     """Generate launch description for RC Racer simulation."""
     # Package directories
     pkg_rc_racer_sim = get_package_share_directory('rc_racer_simulation')
-    pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
+    pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
     # Launch arguments
     world_arg = DeclareLaunchArgument(
@@ -49,31 +50,34 @@ def generate_launch_description():
     )
 
     # Paths
-    world_path = [pkg_rc_racer_sim, '/worlds/', LaunchConfiguration('world')]
+    world_path = PathJoinSubstitution([pkg_rc_racer_sim, 'worlds', LaunchConfiguration('world')])
     urdf_path = os.path.join(pkg_rc_racer_sim, 'urdf', 'rc_racer.urdf.xacro')
 
-    # Process URDF with xacro - wrap in ParameterValue to avoid YAML parsing issues
+    # Process URDF with xacro
     robot_description = ParameterValue(
         Command(['xacro ', urdf_path]),
         value_type=str
     )
 
-    # Gazebo server (physics + sensors, no GUI) - always runs
-    gzserver = IncludeLaunchDescription(
+    # Gazebo Fortress - server only (headless)
+    gz_sim_server = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_gazebo_ros, 'launch', 'gzserver.launch.py')
+            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
         launch_arguments={
-            'world': world_path,
-            'verbose': 'true',
-        }.items()
+            'gz_args': ['-r -s ', world_path],  # -r = run, -s = server only
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('headless'))
     )
 
-    # Gazebo client (GUI) - only when not headless
-    gzclient = IncludeLaunchDescription(
+    # Gazebo Fortress - with GUI
+    gz_sim_gui = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_gazebo_ros, 'launch', 'gzclient.launch.py')
+            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
+        launch_arguments={
+            'gz_args': ['-r ', world_path],  # -r = run (with GUI)
+        }.items(),
         condition=UnlessCondition(LaunchConfiguration('headless'))
     )
 
@@ -89,14 +93,14 @@ def generate_launch_description():
         }]
     )
 
-    # Spawn robot in Gazebo
+    # Spawn robot in Gazebo Fortress
     spawn_robot = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
+        package='ros_gz_sim',
+        executable='create',
         name='spawn_rc_racer',
         arguments=[
             '-topic', 'robot_description',
-            '-entity', 'rc_racer',
+            '-name', 'rc_racer',
             '-x', '0.0',
             '-y', '0.0',
             '-z', '0.2',
@@ -104,7 +108,27 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Joint state publisher (for visualization)
+    # Bridge Gazebo topics to ROS 2
+    gz_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='gz_bridge',
+        arguments=[
+            # IMU
+            '/imu@sensor_msgs/msg/Imu@ignition.msgs.IMU',
+            # GPS/NavSat
+            '/navsat@sensor_msgs/msg/NavSatFix@ignition.msgs.NavSat',
+            # Camera
+            '/camera@sensor_msgs/msg/Image@ignition.msgs.Image',
+            '/camera_info@sensor_msgs/msg/CameraInfo@ignition.msgs.CameraInfo',
+            # Clock
+            '/clock@rosgraph_msgs/msg/Clock@ignition.msgs.Clock',
+        ],
+        output='screen',
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+    )
+
+    # Joint state publisher
     joint_state_publisher = Node(
         package='joint_state_publisher',
         executable='joint_state_publisher',
@@ -116,9 +140,10 @@ def generate_launch_description():
         world_arg,
         use_sim_time_arg,
         headless_arg,
-        gzserver,
-        gzclient,
+        gz_sim_server,
+        gz_sim_gui,
         robot_state_publisher,
         joint_state_publisher,
         spawn_robot,
+        gz_bridge,
     ])

@@ -1,7 +1,7 @@
 # =============================================================================
 # RC Racer Simulation Container
 # =============================================================================
-# Standalone Gazebo simulation environment
+# Standalone Gazebo Fortress simulation environment
 # Publishes sensor data that other containers can subscribe to
 #
 # Build:
@@ -16,12 +16,13 @@ FROM osrf/ros:humble-desktop
 # Avoid prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Gazebo and simulation dependencies
+# Install Gazebo Fortress and ROS 2 integration
 RUN apt-get update && apt-get install -y \
-    # Gazebo and ROS integration
-    ros-humble-gazebo-ros \
-    ros-humble-gazebo-ros-pkgs \
-    ros-humble-gazebo-plugins \
+    # Gazebo Fortress (new Gazebo, not Classic)
+    ros-humble-ros-gz \
+    ros-humble-ros-gz-sim \
+    ros-humble-ros-gz-bridge \
+    ros-humble-ros-gz-image \
     # Robot description
     ros-humble-robot-state-publisher \
     ros-humble-joint-state-publisher \
@@ -50,10 +51,10 @@ RUN . /opt/ros/humble/setup.sh && \
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
-set -e\n\
-source /opt/ros/humble/setup.bash\n\
-source /ros2_ws/install/setup.bash\n\
-exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
+    set -e\n\
+    source /opt/ros/humble/setup.bash\n\
+    source /ros2_ws/install/setup.bash\n\
+    exec "$@"' > /ros_entrypoint.sh && chmod +x /ros_entrypoint.sh
 
 # Environment for ROS 2 cross-container communication
 ENV ROS_DOMAIN_ID=0

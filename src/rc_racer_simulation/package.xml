@@ -5,7 +5,7 @@
 <package format="3">
   <name>rc_racer_simulation</name>
   <version>0.1.0</version>
-  <description>Gazebo simulation environment for RC Racer</description>
+  <description>Gazebo Fortress simulation environment for RC Racer</description>
   <maintainer email="todo@todo.com">Anthony Tracy</maintainer>
   <license>MIT</license>
 
@@ -24,10 +24,11 @@
   <depend>robot_state_publisher</depend>
   <depend>joint_state_publisher</depend>
 
-  <!-- Gazebo -->
-  <depend>gazebo_ros</depend>
-  <depend>gazebo_ros_pkgs</depend>
-  <depend>gazebo_plugins</depend>
+  <!-- Gazebo Fortress (new Gazebo) -->
+  <depend>ros_gz</depend>
+  <depend>ros_gz_sim</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_image</depend>
 
   <!-- TF -->
   <depend>tf2</depend>
@@ -43,6 +44,5 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <gazebo_ros gazebo_model_path="${prefix}/meshes"/>
   </export>
 </package>

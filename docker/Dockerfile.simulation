@@ -44,10 +44,12 @@ WORKDIR /ros2_ws
 # Copy only the simulation package (not the whole repo)
 COPY src/rc_racer_simulation /ros2_ws/src/rc_racer_simulation
 
-# Build the simulation package
+# Build the simulation package. Remove the whole build tree afterwards (only
+# install/ is needed to run): a partially deleted build dir breaks rebuilds,
+# e.g. simulation-gui rebuilding its mounted source on start.
 RUN . /opt/ros/humble/setup.sh && \
     colcon build --packages-select rc_racer_simulation && \
-    rm -rf /ros2_ws/log /ros2_ws/build/rc_racer_simulation/CMakeFiles
+    rm -rf /ros2_ws/log /ros2_ws/build
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\

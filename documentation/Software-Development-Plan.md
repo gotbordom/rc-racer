@@ -21,7 +21,7 @@ This document outlines the software development plan for the RC Racer autonomous
 | **Phase 1: Simulation**  | 🚧 In Progress | Gazebo world, robot model, sensor simulation (see §4.7 exit criteria) |
 | **Phase 2: Perception**  | ⏳ Planned     | Object detection, state estimation           |
 | **Phase 3: Navigation**  | ⏳ Planned     | Localization, mapping, path planning         |
-| **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems                |
+| **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems (first: fix sim steering lag, §4.2) |
 | **Phase 5: Integration** | ⏳ Planned     | Full system integration, hardware deployment |
 
 ### 1.2 Package Structure
@@ -526,6 +526,10 @@ Based on Traxxas Slash hardware specifications from `documentation/Rc-Car-Design
 Front wheels are mounted on steering hinges (revolute about Z); the Gazebo `AckermannSteering` system computes the inner/outer steering angles and rear wheel speed from a `Twist` command.
 
 **Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction (`mu = 1.0` on the tires). Not modelled: tire slip/deformation, suspension, motor torque curves, or terrain-dependent friction.
+
+Wheel joints carry only bearing-level losses (`damping = 0.001`, `friction = 0`). With 33.7 mm wheels, larger values become tens of newtons of drag at the tire and the free-rolling front wheels skid instead of rolling (the car crawls and slides sideways instead of turning). The smoke test checks ground-truth speed and turn rate against the command to catch this.
+
+**Known limitation - steering lag:** Fortress' `AckermannSteering` drives the steering joints with a hard-coded gain of 1, i.e. a first-order lag with a **~1 s time constant** (~63% of the target angle after 1 s; a real servo takes ~0.15 s). It has no gain parameter (`steer_p_gain` arrives in Gazebo Garden). Steady-state turning is correct, so this is accepted for Phases 1-3. **Revisit before tuning path following (Phase 4)**: either drive the steering joints with `JointPositionController` (settable gain) from a small `/cmd_vel` -> steering-angle node, or move to a newer Gazebo.
 
 ### 4.3 Simulated Sensors and Topics
 

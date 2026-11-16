@@ -8,8 +8,10 @@ Validates that the generated practice course matches its course file
 (rc_racer_simulation/courses/practice_course.yaml):
   - Every waypoint cone and obstacle exists in the running world
   - Each cone sits where the course file says, upright and on the ground
-  - NavSat at the start point reports the course's start lat/lon, i.e. the
-    world origin and the course file share one coordinate frame
+  - Noise-free NavSat (/sim/truth/navsat) at the start point reports the
+    course's start lat/lon, i.e. the world origin and the course file share
+    one coordinate frame. Truth is used because this checks the world, not
+    GNSS accuracy (/navsat carries ~2 m of simulated receiver error)
 
 If this fails, any test or planner that uses the course file as its map
 would be steering to the wrong place.
@@ -139,13 +141,13 @@ class TestCourseWorld(unittest.TestCase):
                 self.assertLess(abs(pitch), UPRIGHT_TOLERANCE_RAD, f'{name} tipped over')
 
     def test_navsat_at_start_matches_course(self):
-        """GPS at the start point reports the course file's start lat/lon."""
+        """Noise-free GPS at the start point reports the course file's start lat/lon."""
         rclpy.init()
         node = rclpy.create_node('test_course_world')
         try:
             received = []
             node.create_subscription(
-                NavSatFix, '/navsat', received.append, qos_profile_sensor_data)
+                NavSatFix, '/sim/truth/navsat', received.append, qos_profile_sensor_data)
             end = time.monotonic() + SENSOR_TIMEOUT_S
             while not received and time.monotonic() < end:
                 rclpy.spin_once(node, timeout_sec=0.1)
@@ -153,7 +155,8 @@ class TestCourseWorld(unittest.TestCase):
             node.destroy_node()
             rclpy.shutdown()
 
-        self.assertTrue(received, f'No message on /navsat within {SENSOR_TIMEOUT_S:.0f}s')
+        self.assertTrue(received,
+                        f'No message on /sim/truth/navsat within {SENSOR_TIMEOUT_S:.0f}s')
         fix = received[0]
         east, north = local_position(
             {'latitude': fix.latitude, 'longitude': fix.longitude}, COURSE['start'])

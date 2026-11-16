@@ -70,7 +70,7 @@ L0  RC Racer System
 │
 └── L1  TST  Test & Simulation Segment         ("simulator and test equipment")
     ├── L2  SIM  Vehicle Simulator
-    │   └── L3  SIMPKG  rc_racer_simulation    ✅   robot model, sensors, worlds, course generator
+    │   └── L3  SIMPKG  rc_racer_simulation    ✅   robot model, sensors + sensor adapter, worlds, course generator
     └── L2  HAR  Test Harness
         ├── L3  ITEST   rc_racer_integration_tests  🟨
         ├── L3  STEST   rc_racer_system_tests       ✅   smoke + course world tests

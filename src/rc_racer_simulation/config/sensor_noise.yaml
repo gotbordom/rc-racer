@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+#
+# Simulated sensor noise - the single source of truth.
+#
+# Gazebo publishes noise-free sensor data on /sim/truth/*. The sensor adapter
+# (scripts/sensor_adapter_node.py) adds the noise below and sets each message's
+# covariance from the SAME values, so the noise a filter sees always matches
+# the covariance it is told. Values are proposals (TBR) for the planned
+# hardware; tune them against real sensor logs in Phase 5.
+#
+# All values are standard deviations in SI units (ICD-SNS-GNC).
+
+sensor_adapter:
+  ros__parameters:
+    # Random seed; 0 = different every run
+    seed: 0
+
+    imu:                                  # Adafruit BNO085
+      angular_velocity_stddev: 0.005      # rad/s, white noise per sample
+      linear_acceleration_stddev: 0.05    # m/s^2, white noise per sample
+      orientation_roll_pitch_stddev: 0.02 # rad (~1.1 deg), fused orientation
+      orientation_yaw_stddev: 0.05        # rad (~2.9 deg), fused orientation
+
+    navsat:                               # consumer GNSS receiver, standalone (no RTK)
+      horizontal_stddev: 2.0              # m, north and east
+      vertical_stddev: 4.0                # m
+      correlation_time: 30.0              # s, Gauss-Markov time constant (0 = white noise)
+
+    wheel_odom:                           # drive motor encoder, 128 PPR
+      linear_x_stddev: 0.02               # m/s
+      unprovided_variance: 1000000.0      # variance reported for fields hardware cannot measure

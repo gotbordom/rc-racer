@@ -10,6 +10,7 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -36,6 +37,10 @@ install(DIRECTORY
   scripts
   DESTINATION share/${PROJECT_NAME}
 )
+
+# Python support code (sensor noise models) and the sensor adapter node
+ament_python_install_package(${PROJECT_NAME})
+install(PROGRAMS scripts/sensor_adapter_node.py DESTINATION lib/${PROJECT_NAME})
 
 # Generate a Gazebo world for each course file (courses/<name>.yaml ->
 # worlds/<name>.world). The course file is the source of truth; worlds are
@@ -69,6 +74,11 @@ if(BUILD_TESTING)
   # Course world generator: geodetic conversion, course validation, SDF output
   ament_add_pytest_test(test_generate_course_world test/test_generate_course_world.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
+    TIMEOUT 60
+  )
+
+  # Sensor noise models used by the sensor adapter (DEV-02)
+  ament_add_pytest_test(test_sensor_noise test/test_sensor_noise.py
     TIMEOUT 60
   )
 endif()

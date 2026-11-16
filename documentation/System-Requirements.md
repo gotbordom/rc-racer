@@ -99,10 +99,11 @@ Source: **RM** = [RoboMagellan Requirements](RoboMagellan-Requirements) / [RoboG
 
 | ID | Requirement | Source | Ver. | Allocation | Status |
 | --- | --- | --- | --- | --- | --- |
-| REQ-TST-001 | The simulator shall provide every interface that the vehicle's sensing hardware and actuation hardware provide, as defined in [ICD-VEH-TST](ICD-VEH-TST), so vehicle software runs unchanged against it. | REQ-SYS-040 | T | TST.SIM | ✅ Met for IMU, GPS, camera, wheel odometry, drive command |
+| REQ-TST-001 | The simulator shall provide every interface that the vehicle's sensing hardware and actuation hardware provide, as defined in [ICD-VEH-TST](ICD-VEH-TST), so vehicle software runs unchanged against it. | REQ-SYS-040 | T | TST.SIM | ✅ Met for IMU, GPS, camera, wheel odometry, drive command (open deviations in ICD-VEH-TST §5) |
 | REQ-TST-002 | The simulator shall generate a course world from a course file, with cones and obstacles at the file's WGS84 coordinates. | REQ-SYS-040, REQ-SYS-021 | T | TST.SIM | ✅ Met (`test_course_world`) |
 | REQ-TST-003 | The simulator shall provide ground-truth vehicle pose for verifying vehicle software. | REQ-SYS-040 | T | TST.SIM | ✅ Met (Gazebo model pose) |
 | REQ-TST-004 | Simulation tests shall run headless without a GPU, nightly in CI and locally with one command. | REQ-SYS-040 | T, I | TST.HAR | ✅ Met (nightly, `run-system-tests.sh`) |
+| REQ-TST-005 | Simulated sensors shall carry realistic noise, and each message's covariance shall match the noise actually applied. | REQ-SYS-040, REQ-GNC-006 | T | TST.SIM | ✅ Met (sensor adapter, `TestSensorNoise`) |
 
 ### 3.2 Ground Segment (GND)
 

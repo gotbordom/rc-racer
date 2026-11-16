@@ -110,4 +110,4 @@ Keeping `RobotFrame` free of ROS (rather than inside `RobotNode` as in the origi
 | 1 | Where is GPS fused? (ISSUE-002) | (a) in `state_estimation`, as the class diagram shows; (b) `state_estimation` fuses IMU + wheel only in `odom`, and `localization` adds GPS in `map` | **(b)**: REP-105 split. `odom` stays continuous for control, and GPS jumps only move `map`→`odom`. Same as `robot_localization`'s two-filter setup |
 | 2 | Write our own filter or use `robot_localization`? | own / library | **Own** (the point of the project, and the design calls for pluggable fusion methods), but run `robot_localization` in the L2 sim test as a baseline to compare against |
 | 3 | 2D or 3D state? | 2D now, 3D for hills | **2D** for Phase 2; revisit with terrain worlds (REQ-SYS-009) |
-| 4 | Simulator deviations DEV-01 (frame IDs) and DEV-02 (zero covariances) | - | DEV-01 ✅ fixed. **Fix DEV-02 before coding**: this component depends on it ([ICD-VEH-TST](ICD-VEH-TST)) |
+| 4 | Simulator deviations DEV-01 (frame IDs) and DEV-02 (zero covariances) | - | ✅ Both fixed ([ICD-VEH-TST](ICD-VEH-TST)). Use `/sim/truth/*` and ground-truth pose in the L2 test to measure estimate error |

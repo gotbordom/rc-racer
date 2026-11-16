@@ -557,20 +557,34 @@ Wheel joints carry only bearing-level losses (`damping = 0.001`, `friction = 0`)
 
 All Gazebo topics reach ROS 2 through `ros_gz_bridge`. Sensors flow one way (Gazebo → ROS); commands flow one way (ROS → Gazebo).
 
-| Topic          | Type                       | Direction    | Source (Gazebo system)  | Rate   |
-| -------------- | -------------------------- | ------------ | ----------------------- | ------ |
-| `/imu`         | `sensor_msgs/Imu`          | gz → ROS     | `Imu`                   | 100 Hz |
-| `/navsat`      | `sensor_msgs/NavSatFix`    | gz → ROS     | `NavSat`                | 10 Hz  |
-| `/camera`      | `sensor_msgs/Image`        | gz → ROS     | `Sensors` (ogre2)       | 30 Hz  |
-| `/camera_info` | `sensor_msgs/CameraInfo`   | gz → ROS     | `Sensors` (ogre2)       | 30 Hz  |
-| `/wheel/odom`  | `nav_msgs/Odometry`        | gz → ROS     | `AckermannSteering`     | 50 Hz  |
+Gazebo's IMU, GNSS and wheel odometry are **noise-free** and published as truth on `/sim/truth/*`. The **sensor adapter** (`sensor_adapter_node.py`, the simulator's stand-in for the sensor drivers) adds realistic noise and sets each message's covariance from the same values in `config/sensor_noise.yaml`, then publishes the ICD topics. Vehicle software uses only the ICD topics; `/sim/truth/*` is for tests ([ICD-VEH-TST](ICD-VEH-TST)).
+
+| Topic          | Type                       | Direction    | Source                                  | Rate   |
+| -------------- | -------------------------- | ------------ | --------------------------------------- | ------ |
+| `/imu`         | `sensor_msgs/Imu`          | gz → ROS     | `Imu` system → sensor adapter           | 100 Hz |
+| `/navsat`      | `sensor_msgs/NavSatFix`    | gz → ROS     | `NavSat` system → sensor adapter        | 10 Hz  |
+| `/camera`      | `sensor_msgs/Image`        | gz → ROS     | `Sensors` (ogre2)                       | 30 Hz  |
+| `/camera_info` | `sensor_msgs/CameraInfo`   | gz → ROS     | `Sensors` (ogre2)                       | 30 Hz  |
+| `/wheel/odom`  | `nav_msgs/Odometry`        | gz → ROS     | `AckermannSteering` → sensor adapter    | 50 Hz  |
+| `/sim/truth/imu`, `/sim/truth/navsat`, `/sim/truth/wheel_odom` | as above | gz → ROS | Gazebo, noise-free (tests only) | as above |
 | `/joint_states`| `sensor_msgs/JointState`   | gz → ROS     | `JointStatePublisher`   | -      |
 | `/clock`       | `rosgraph_msgs/Clock`      | gz → ROS     | (simulation time)       | -      |
 | `/cmd_vel`     | `geometry_msgs/Twist`      | ROS → gz     | `AckermannSteering`     | -      |
 
 `/wheel/odom` is computed from wheel rotation and stands in for the wheel encoders. It is deliberately not named `/odom`: the fused estimate published by `state_estimation` will own `/odom`.
 
-Sensors are noise-free except the IMU (Gaussian noise on angular velocity and acceleration). The camera renders with OGRE 2; on machines without a GPU (e.g. CI) it uses software rendering (`LIBGL_ALWAYS_SOFTWARE=1`).
+**Simulated sensor noise** (`config/sensor_noise.yaml`, proposed values to be tuned against real sensor logs in Phase 5):
+
+| Sensor | Noise (1σ) | Model |
+| --- | --- | --- |
+| IMU gyro / accelerometer | 0.005 rad/s / 0.05 m/s² | White, per sample |
+| IMU orientation | 0.02 rad roll/pitch, 0.05 rad yaw | White, per sample |
+| GNSS | 2.0 m horizontal, 4.0 m vertical | Gauss-Markov, 30 s correlation time (real GNSS error wanders slowly) |
+| Wheel odometry | 0.02 m/s on forward speed | White; other fields reported as unmeasured (variance 1e6) |
+
+Noise is added in the adapter rather than in Gazebo because Fortress' NavSat sensor applies its horizontal noise in **degrees** (2.0 gives ~200 km), and the Ackermann odometry has no noise model.
+
+The camera renders with OGRE 2; on machines without a GPU (e.g. CI) it uses software rendering (`LIBGL_ALWAYS_SOFTWARE=1`).
 
 ### 4.4 Worlds and Course Files
 

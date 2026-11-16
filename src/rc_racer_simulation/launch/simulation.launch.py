@@ -124,8 +124,26 @@ def generate_launch_description():
             # Joint states (wheel spin + steering angle) for robot_state_publisher
             '/joint_states@sensor_msgs/msg/JointState[ignition.msgs.Model',
         ],
+        # Gazebo sensors are noise-free: publish them as truth for the sensor adapter
+        remappings=[
+            ('/imu', '/sim/truth/imu'),
+            ('/navsat', '/sim/truth/navsat'),
+            ('/wheel/odom', '/sim/truth/wheel_odom'),
+        ],
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+    )
+
+    # Simulated sensor drivers: add noise + covariance, publish the ICD topics
+    sensor_adapter = Node(
+        package='rc_racer_simulation',
+        executable='sensor_adapter_node.py',
+        name='sensor_adapter',
+        output='screen',
+        parameters=[
+            os.path.join(pkg_rc_racer_sim, 'config', 'sensor_noise.yaml'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ]
     )
 
     return LaunchDescription([
@@ -137,4 +155,5 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         gz_bridge,
+        sensor_adapter,
     ])

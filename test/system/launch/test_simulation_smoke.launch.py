@@ -13,6 +13,8 @@ Validates:
       /camera  (sensor_msgs/Image)
   - Sensor data is stamped with its TF frame, and that frame is in the TF
     tree under base_link (ICD-SNS-GNC, Architecture Conventions TF registry)
+  - Sensor covariances match config/sensor_noise.yaml (never zero), and the
+    noise actually added matches the stated covariance (DEV-02, REQ-GNC-006)
   - The car tracks /cmd_vel (Ackermann drive): ground-truth speed and turn
     rate match the command, and /wheel/odom is published
   - Every process (including Gazebo) exits cleanly on shutdown
@@ -33,12 +35,15 @@ import subprocess
 import time
 import unittest
 
+import statistics
+
 import launch
 import launch_testing
 import launch_testing.actions
 import launch_testing.asserts
 import launch_testing.markers
 import rclpy
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -55,6 +60,12 @@ from sensor_msgs.msg import CameraInfo, Image, Imu, NavSatFix
 SENSOR_TIMEOUT_S = 90.0
 
 GRAVITY = 9.81
+
+SENSOR_NOISE = yaml.safe_load(open(os.path.join(
+    get_package_share_directory('rc_racer_simulation'), 'config', 'sensor_noise.yaml'
+)))['sensor_adapter']['ros__parameters']
+NOISE_SAMPLES = 300
+NOISE_TOLERANCE = 0.3  # measured stddev within 30% of configured
 
 # Sensor topic -> (message type, TF frame it must be stamped with)
 SENSOR_FRAMES = {
@@ -176,6 +187,78 @@ class TestSimulationSensors(SimulationTestCase):
         self.assertEqual(msg.width, 640)
         self.assertEqual(msg.height, 480)
         self.assertEqual(len(msg.data), msg.step * msg.height)
+
+
+class TestSensorNoise(SimulationTestCase):
+    """Verify sensor covariances and noise match config/sensor_noise.yaml."""
+
+    def _diag(self, cov, n):
+        return [cov[i * (n + 1)] for i in range(n)]
+
+    def test_imu_covariance(self):
+        """IMU covariances are the squares of the configured stddevs."""
+        msg = self._wait_for_message(Imu, '/imu')
+        imu = SENSOR_NOISE['imu']
+        rp, yaw = imu['orientation_roll_pitch_stddev'], imu['orientation_yaw_stddev']
+        self.assertEqual(self._diag(msg.orientation_covariance, 3),
+                         [rp ** 2, rp ** 2, yaw ** 2])
+        self.assertEqual(self._diag(msg.angular_velocity_covariance, 3),
+                         [imu['angular_velocity_stddev'] ** 2] * 3)
+        self.assertEqual(self._diag(msg.linear_acceleration_covariance, 3),
+                         [imu['linear_acceleration_stddev'] ** 2] * 3)
+
+    def test_navsat_covariance(self):
+        """GNSS covariance is diagonal-known and matches the configured stddevs."""
+        msg = self._wait_for_message(NavSatFix, '/navsat')
+        nav = SENSOR_NOISE['navsat']
+        self.assertEqual(msg.position_covariance_type, NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN)
+        h, v = nav['horizontal_stddev'] ** 2, nav['vertical_stddev'] ** 2
+        self.assertEqual(self._diag(msg.position_covariance, 3), [h, h, v])
+
+    def test_wheel_odom_covariance(self):
+        """Wheel odometry: only linear.x is measured; the rest is 'unprovided'."""
+        msg = self._wait_for_message(Odometry, '/wheel/odom')
+        wheel = SENSOR_NOISE['wheel_odom']
+        big = wheel['unprovided_variance']
+        self.assertEqual(self._diag(msg.twist.covariance, 6),
+                         [wheel['linear_x_stddev'] ** 2] + [big] * 5)
+        self.assertEqual(self._diag(msg.pose.covariance, 6), [big] * 6)
+
+    def test_imu_noise_matches_covariance(self):
+        """Gyro and accelerometer noise (noisy - truth) has the stated stddev."""
+        noisy, truth = {}, {}
+
+        def key(msg):
+            return (msg.header.stamp.sec, msg.header.stamp.nanosec)
+
+        subs = [
+            self.node.create_subscription(
+                Imu, '/imu', lambda m: noisy.__setitem__(key(m), m), qos_profile_sensor_data),
+            self.node.create_subscription(
+                Imu, '/sim/truth/imu', lambda m: truth.__setitem__(key(m), m),
+                qos_profile_sensor_data),
+        ]
+        try:
+            end = time.monotonic() + SENSOR_TIMEOUT_S
+            while len(set(noisy) & set(truth)) < NOISE_SAMPLES and time.monotonic() < end:
+                rclpy.spin_once(self.node, timeout_sec=0.05)
+        finally:
+            for sub in subs:
+                self.node.destroy_subscription(sub)
+
+        stamps = sorted(set(noisy) & set(truth))
+        self.assertGreaterEqual(len(stamps), NOISE_SAMPLES, 'Too few matched IMU samples')
+        gyro = [noisy[s].angular_velocity.z - truth[s].angular_velocity.z for s in stamps]
+        accel = [noisy[s].linear_acceleration.x - truth[s].linear_acceleration.x
+                 for s in stamps]
+        imu = SENSOR_NOISE['imu']
+        for name, residuals, expected in (
+                ('gyro z', gyro, imu['angular_velocity_stddev']),
+                ('accel x', accel, imu['linear_acceleration_stddev'])):
+            with self.subTest(axis=name):
+                self.assertAlmostEqual(
+                    statistics.pstdev(residuals), expected, delta=expected * NOISE_TOLERANCE,
+                    msg=f'{name} noise does not match its stated covariance')
 
 
 class TestSensorFrames(SimulationTestCase):

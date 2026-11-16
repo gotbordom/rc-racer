@@ -70,7 +70,7 @@ No startup order is assumed: GNC waits for each input and reports STALE until it
 
 | Side | Test | Checks |
 | --- | --- | --- |
-| Provider (sim) | `test_simulation_smoke` | Topics publish plausible data; `frame_id`s match and are in the TF tree (`test_sensor_frame_ids`). **Covariances not yet checked - ICD-VEH-TST DEV-02** |
+| Provider (sim) | `test_simulation_smoke` | Topics publish plausible data; `frame_id`s match and are in the TF tree (`test_sensor_frame_ids`); covariances match the noise config and the measured noise matches the covariance (`TestSensorNoise`) |
 | Provider (hardware) | per driver, Phase 5 | Same checks as sim, on the bench |
 | Consumer | `state_estimation` component tests | Runs from recorded/stub inputs that follow this ICD, including stale and `NO_FIX` cases |
 | Both | GNC subsystem test in sim | Estimate vs ground truth |

@@ -45,6 +45,8 @@ services:
   # Runs Gazebo with GUI - requires: xhost +local:docker
   # Mounts rc_racer_simulation from the working tree and rebuilds it on start,
   # so URDF/world/launch edits only need a restart (no image rebuild)
+  # Opens the practice course; pick another world with e.g.:
+  #   SIM_WORLD=empty_course.world docker compose up simulation-gui
   simulation-gui:
     build:
       context: ..
@@ -77,6 +79,7 @@ services:
         colcon build --packages-select rc_racer_simulation &&
         source install/setup.bash &&
         ros2 launch rc_racer_simulation simulation.launch.py headless:=false
+        world:=${SIM_WORLD:-practice_course.world}
 
   # ===========================================================================
   # Development Container (Building & Testing)

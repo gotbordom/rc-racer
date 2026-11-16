@@ -601,6 +601,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
 `simulation-gui` mounts `src/rc_racer_simulation` and rebuilds it on start, so URDF/world/launch/course edits only need `docker compose restart simulation-gui`.
+It opens the practice course by default; choose another world with `SIM_WORLD=empty_course.world docker compose up simulation-gui`.
 
 **Inside the dev container (headless or a specific world):**
 

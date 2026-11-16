@@ -14,12 +14,12 @@ This document outlines the software development plan for the RC Racer autonomous
 
 ### 1.1 Development Roadmap
 
-> **Current Phase: Simulation Environment**
+> **Current Phase: Perception (Phase 2)**
 
 | Phase                    | Status         | Description                                  |
 | ------------------------ | -------------- | -------------------------------------------- |
-| **Phase 1: Simulation**  | 🚧 In Progress | Gazebo world, robot model, sensor simulation (see §4.7 exit criteria) |
-| **Phase 2: Perception**  | ⏳ Planned     | Object detection, state estimation           |
+| **Phase 1: Simulation**  | ✅ Complete    | Gazebo world, robot model, sensor simulation (completed 2026-11-15, §4.7) |
+| **Phase 2: Perception**  | 🚧 In Progress | Object detection, state estimation           |
 | **Phase 3: Navigation**  | ⏳ Planned     | Localization, mapping, path planning         |
 | **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems (first: fix sim steering lag, §4.2) |
 | **Phase 5: Integration** | ⏳ Planned     | Full system integration, hardware deployment |
@@ -475,7 +475,7 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ## 4. Simulation Environment (Phase 1)
 
-> **This is the current development priority.** See [4.7 Phase 1 Exit Criteria](#47-phase-1-exit-criteria).
+> **Phase 1 complete (2026-11-15).** See [4.7 Phase 1 Exit Criteria](#47-phase-1-exit-criteria) and the known steering-lag limitation in [4.2](#42-robot-model-urdf).
 
 Simulation-first development allows testing without hardware, faster iteration, and reproducible test scenarios.
 
@@ -631,7 +631,7 @@ Phase 1 is complete when all of the following are true:
 | Simulation tests green in the nightly pipeline | ✅ Done |
 | Practice cone course generated from a course file | ✅ Done |
 | Simulation runs from the dev container (Gazebo Fortress) | ✅ Done |
-| Car driven manually around the practice course in the GUI, with no visual/physics issues found (wheel orientation, steering direction, chassis height, camera view) | ⏳ Pending |
+| Car driven manually around the practice course in the GUI, with no visual/physics issues found (wheel orientation, steering direction, chassis height, camera view) | ✅ Done (found and fixed wheel skidding; steering lag accepted, §4.2) |
 
 ---
 

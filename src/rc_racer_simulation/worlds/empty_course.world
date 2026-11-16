@@ -26,6 +26,20 @@
     <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
+    <!-- IMU and NavSat sensors are not rendering sensors; each needs its own system -->
+    <plugin filename="ignition-gazebo-imu-system" name="ignition::gazebo::systems::Imu"/>
+    <plugin filename="ignition-gazebo-navsat-system" name="ignition::gazebo::systems::NavSat"/>
+
+    <!-- World origin on Earth, required for NavSat to produce lat/lon.
+         Placeholder: Alameda County Fairgrounds, Pleasanton, CA (past RoboGames venue) -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>37.6602</latitude_deg>
+      <longitude_deg>-121.8890</longitude_deg>
+      <elevation>100</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
 
     <!-- Lighting -->
     <light type="directional" name="sun">

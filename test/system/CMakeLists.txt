@@ -44,6 +44,18 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   # ---------------------------------------------------------------------------
+  # System Test: Simulation Smoke
+  # ---------------------------------------------------------------------------
+  # Validates: Gazebo starts headless, /clock advances, sensors publish, car drives
+  # Timeout: Medium (Gazebo startup + software rendering on CI)
+  #
+  add_launch_test(
+    launch/test_simulation_smoke.launch.py
+    TARGET test_simulation_smoke
+    TIMEOUT 300
+  )
+
+  # ---------------------------------------------------------------------------
   # System Test: Full Stack Simulation
   # ---------------------------------------------------------------------------
   # Validates: Complete system in Gazebo with realistic sensors

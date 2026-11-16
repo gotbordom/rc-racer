@@ -4,8 +4,11 @@
 # Runs: Daily at 2 AM UTC
 # Purpose: Run slow system tests, full validation
 #
-# Uses pre-built CI image from GHCR for faster builds
-# Image is built by docker-publish.yml workflow
+# Runs inside the simulation image (docker/Dockerfile.simulation) so system
+# tests get Gazebo Fortress + ros_gz. The image is built here (with layer
+# caching) rather than pulled, so the nightly also validates the Dockerfile.
+#
+# Gazebo runs headless with software rendering - GitHub runners have no GPU.
 # =============================================================================
 
 name: Nightly
@@ -18,15 +21,12 @@ on:
 
 env:
   ROS_DISTRO: humble
+  SIM_IMAGE: rc-racer-simulation:nightly
 
 jobs:
   system-tests:
     runs-on: ubuntu-22.04
-    container:
-      image: ghcr.io/${{ github.repository }}-ci:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -34,30 +34,37 @@ jobs:
         with:
           path: src/rc-racer
 
-      # Install Gazebo (not in base CI image to keep it lean)
-      - name: Install Gazebo for system tests
-        run: |
-          apt-get update
-          apt-get install -y \
-            ros-humble-gazebo-ros \
-            ros-humble-gazebo-plugins
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build
-        shell: bash
-        run: |
-          source /opt/ros/humble/setup.bash
-          colcon build --symlink-install
-        working-directory: .
+      - name: Build simulation image
+        uses: docker/build-push-action@v5
+        with:
+          context: src/rc-racer
+          file: src/rc-racer/docker/Dockerfile.simulation
+          load: true
+          tags: ${{ env.SIM_IMAGE }}
+          cache-from: type=gha,scope=simulation
+          cache-to: type=gha,scope=simulation,mode=max
 
-      - name: Run all tests (including system tests)
-        shell: bash
+      - name: Build and run all tests (including system tests)
         run: |
-          source /opt/ros/humble/setup.bash
-          source install/setup.bash
-          # Run all tests with extended timeout for system tests
-          colcon test --event-handlers console_direct+
-          colcon test-result --verbose
-        working-directory: .
+          docker run --rm \
+            -v "${{ github.workspace }}:/ws" \
+            -w /ws \
+            -e ROS_DOMAIN_ID=42 \
+            -e LIBGL_ALWAYS_SOFTWARE=1 \
+            ${{ env.SIM_IMAGE }} \
+            bash -c '
+              set -e
+              apt-get update
+              rosdep update --rosdistro ${{ env.ROS_DISTRO }}
+              rosdep install --from-paths src --ignore-src -y --rosdistro ${{ env.ROS_DISTRO }}
+              colcon build --symlink-install
+              source install/setup.bash
+              colcon test --event-handlers console_direct+
+              colcon test-result --verbose
+            '
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

@@ -1,10 +1,23 @@
 <?xml version="1.0"?>
 <!-- SPDX-FileCopyrightText: 2025 Anthony Tracy -->
 <!-- SPDX-License-Identifier: MIT -->
+<!--
+  RC Racer Wheels - Ackermann steering, rear-wheel drive (2WD Slash, Magnum 272)
+
+  Front: base_link -> steering hinge (revolute, Z) -> wheel (continuous, Y)
+  Rear:  base_link -> wheel (continuous, Y)
+
+  Drive and steering are handled by the Gazebo AckermannSteering system,
+  configured in rc_racer_wheels below.
+-->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- Wheel macro -->
-  <xacro:macro name="wheel" params="name x_offset y_offset">
+  <xacro:property name="wheel_mass" value="0.5"/>
+  <!-- Traxxas Slash stock servo is roughly +/-30 degrees at the wheel -->
+  <xacro:property name="steering_limit" value="0.52"/>
+
+  <!-- Wheel link + spin joint, attached to the given parent link -->
+  <xacro:macro name="wheel" params="name parent x_offset y_offset z_offset">
     <link name="${name}_wheel_link">
       <visual>
         <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
@@ -21,23 +34,24 @@
           <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
         </geometry>
       </collision>
+      <!-- Solid cylinder spinning about Y -->
       <inertial>
         <origin xyz="0 0 0" rpy="0 0 0"/>
-        <mass value="0.5"/>
+        <mass value="${wheel_mass}"/>
         <inertia
-          ixx="0.001"
+          ixx="${wheel_mass/12.0 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width)}"
           ixy="0.0"
           ixz="0.0"
-          iyy="0.001"
+          iyy="${wheel_mass/2.0 * wheel_radius*wheel_radius}"
           iyz="0.0"
-          izz="0.001"/>
+          izz="${wheel_mass/12.0 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width)}"/>
       </inertial>
     </link>
 
     <joint name="${name}_wheel_joint" type="continuous">
-      <parent link="base_link"/>
+      <parent link="${parent}"/>
       <child link="${name}_wheel_link"/>
-      <origin xyz="${x_offset} ${y_offset} ${-chassis_height/2 - ground_clearance}" rpy="0 0 0"/>
+      <origin xyz="${x_offset} ${y_offset} ${z_offset}" rpy="0 0 0"/>
       <axis xyz="0 1 0"/>
       <dynamics damping="0.1" friction="0.1"/>
     </joint>
@@ -49,14 +63,68 @@
     </gazebo>
   </xacro:macro>
 
+  <!-- Steering hinge (kingpin) carrying a front wheel -->
+  <xacro:macro name="steered_wheel" params="name x_offset y_offset">
+    <link name="${name}_steering_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.05"/>
+        <inertia ixx="0.00001" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.00001"/>
+      </inertial>
+    </link>
+
+    <joint name="${name}_steering_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${name}_steering_link"/>
+      <origin xyz="${x_offset} ${y_offset} ${-chassis_height/2 - ground_clearance}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-steering_limit}" upper="${steering_limit}" effort="10.0" velocity="5.0"/>
+    </joint>
+
+    <xacro:wheel name="${name}" parent="${name}_steering_link" x_offset="0" y_offset="0" z_offset="0"/>
+  </xacro:macro>
+
   <xacro:macro name="rc_racer_wheels">
-    <!-- Front wheels -->
-    <xacro:wheel name="front_left" x_offset="${wheelbase/2}" y_offset="${track_width/2}"/>
-    <xacro:wheel name="front_right" x_offset="${wheelbase/2}" y_offset="${-track_width/2}"/>
-    
-    <!-- Rear wheels -->
-    <xacro:wheel name="rear_left" x_offset="${-wheelbase/2}" y_offset="${track_width/2}"/>
-    <xacro:wheel name="rear_right" x_offset="${-wheelbase/2}" y_offset="${-track_width/2}"/>
+    <!-- Front wheels (steered, free rolling) -->
+    <xacro:steered_wheel name="front_left" x_offset="${wheelbase/2}" y_offset="${track_width/2}"/>
+    <xacro:steered_wheel name="front_right" x_offset="${wheelbase/2}" y_offset="${-track_width/2}"/>
+
+    <!-- Rear wheels (driven) -->
+    <xacro:wheel name="rear_left" parent="base_link"
+      x_offset="${-wheelbase/2}" y_offset="${track_width/2}" z_offset="${-chassis_height/2 - ground_clearance}"/>
+    <xacro:wheel name="rear_right" parent="base_link"
+      x_offset="${-wheelbase/2}" y_offset="${-track_width/2}" z_offset="${-chassis_height/2 - ground_clearance}"/>
+
+    <gazebo>
+      <!-- Ackermann drive: /cmd_vel (Twist) in, wheel odometry out -->
+      <plugin filename="ignition-gazebo-ackermann-steering-system"
+              name="ignition::gazebo::systems::AckermannSteering">
+        <left_joint>rear_left_wheel_joint</left_joint>
+        <right_joint>rear_right_wheel_joint</right_joint>
+        <left_steering_joint>front_left_steering_joint</left_steering_joint>
+        <right_steering_joint>front_right_steering_joint</right_steering_joint>
+        <kingpin_width>${track_width}</kingpin_width>
+        <steering_limit>${steering_limit}</steering_limit>
+        <wheel_base>${wheelbase}</wheel_base>
+        <wheel_separation>${track_width}</wheel_separation>
+        <wheel_radius>${wheel_radius}</wheel_radius>
+        <min_velocity>-3.0</min_velocity>
+        <max_velocity>3.0</max_velocity>
+        <min_acceleration>-3.0</min_acceleration>
+        <max_acceleration>3.0</max_acceleration>
+        <topic>cmd_vel</topic>
+        <odom_topic>wheel/odom</odom_topic>
+        <frame_id>odom</frame_id>
+        <child_frame_id>base_footprint</child_frame_id>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+
+      <!-- Publish all joint states so robot_state_publisher can animate wheels/steering -->
+      <plugin filename="ignition-gazebo-joint-state-publisher-system"
+              name="ignition::gazebo::systems::JointStatePublisher">
+        <topic>joint_states</topic>
+      </plugin>
+    </gazebo>
   </xacro:macro>
 
 </robot>

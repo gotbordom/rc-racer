@@ -37,11 +37,10 @@
   <test_depend>sensor_msgs</test_depend>
   <test_depend>geometry_msgs</test_depend>
   <test_depend>nav_msgs</test_depend>
+  <test_depend>rosgraph_msgs</test_depend>
 
-  <!-- Simulation dependencies -->
-  <test_depend>gazebo_ros</test_depend>
-  <test_depend>gazebo_plugins</test_depend>
-  <test_depend>robot_state_publisher</test_depend>
+  <!-- Simulation dependencies (Gazebo Fortress) -->
+  <test_depend>rc_racer_simulation</test_depend>
 
   <!-- All packages under test -->
   <test_depend>state_estimation</test_depend>

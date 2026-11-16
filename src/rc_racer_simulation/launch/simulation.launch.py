@@ -114,25 +114,23 @@ def generate_launch_description():
         executable='parameter_bridge',
         name='gz_bridge',
         arguments=[
+            # Direction: '[' = gz -> ROS, ']' = ROS -> gz, '@' = both
             # IMU
-            '/imu@sensor_msgs/msg/Imu@ignition.msgs.IMU',
+            '/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU',
             # GPS/NavSat
-            '/navsat@sensor_msgs/msg/NavSatFix@ignition.msgs.NavSat',
+            '/navsat@sensor_msgs/msg/NavSatFix[ignition.msgs.NavSat',
             # Camera
-            '/camera@sensor_msgs/msg/Image@ignition.msgs.Image',
-            '/camera_info@sensor_msgs/msg/CameraInfo@ignition.msgs.CameraInfo',
+            '/camera@sensor_msgs/msg/Image[ignition.msgs.Image',
+            '/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo',
             # Clock
-            '/clock@rosgraph_msgs/msg/Clock@ignition.msgs.Clock',
+            '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
+            # Ackermann drive: commands in (ROS -> gz), wheel odometry out (gz -> ROS)
+            '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
+            '/wheel/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
+            # Joint states (wheel spin + steering angle) for robot_state_publisher
+            '/joint_states@sensor_msgs/msg/JointState[ignition.msgs.Model',
         ],
         output='screen',
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-    )
-
-    # Joint state publisher
-    joint_state_publisher = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
 
@@ -143,7 +141,6 @@ def generate_launch_description():
         gz_sim_server,
         gz_sim_gui,
         robot_state_publisher,
-        joint_state_publisher,
         spawn_robot,
         gz_bridge,
     ])

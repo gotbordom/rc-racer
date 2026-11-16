@@ -1,0 +1,60 @@
+# =============================================================================
+# Wiki Sync
+# =============================================================================
+# Publishes documentation/ to the GitHub wiki (rc-racer.wiki.git) on merge to
+# main, so documentation/ is the single source of truth.
+#
+# Do not edit synced pages in the wiki directly - they are overwritten on the
+# next sync. Wiki-only pages (Home.md, _Sidebar.md, _Footer.md) are preserved.
+# =============================================================================
+
+name: Wiki Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "documentation/**"
+  workflow_dispatch: # Allow manual trigger
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write # Required to push to the wiki repo
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - name: Copy documentation into wiki
+        run: |
+          rsync -av --delete \
+            --exclude ".git/" \
+            --exclude "Home.md" \
+            --exclude "_Sidebar.md" \
+            --exclude "_Footer.md" \
+            documentation/ wiki/
+
+      - name: Commit and push
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date"
+            exit 0
+          fi
+          git commit -m "Sync from ${{ github.repository }}@${GITHUB_SHA::7}"
+          git push

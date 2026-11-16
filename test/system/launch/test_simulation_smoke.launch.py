@@ -11,6 +11,8 @@ Validates:
       /imu     (sensor_msgs/Imu)
       /navsat  (sensor_msgs/NavSatFix)
       /camera  (sensor_msgs/Image)
+  - Sensor data is stamped with its TF frame, and that frame is in the TF
+    tree under base_link (ICD-SNS-GNC, Architecture Conventions TF registry)
   - The car tracks /cmd_vel (Ackermann drive): ground-truth speed and turn
     rate match the command, and /wheel/odom is published
   - Every process (including Gazebo) exits cleanly on shutdown
@@ -42,15 +44,25 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import Image, Imu, NavSatFix
+from sensor_msgs.msg import CameraInfo, Image, Imu, NavSatFix
 
 # Gazebo startup on a CPU-only CI runner is slow; be generous
 SENSOR_TIMEOUT_S = 90.0
 
 GRAVITY = 9.81
+
+# Sensor topic -> (message type, TF frame it must be stamped with)
+SENSOR_FRAMES = {
+    '/imu': (Imu, 'imu_link'),
+    '/navsat': (NavSatFix, 'gps_link'),
+    '/camera': (Image, 'camera_optical_link'),
+    '/camera_info': (CameraInfo, 'camera_optical_link'),
+}
 
 # Drive tests: command (DRIVE_SPEED, turn rate) for DRIVE_TIME_S of SIM time and
 # compare against Gazebo ground truth. Tolerances allow for the acceleration
@@ -164,6 +176,27 @@ class TestSimulationSensors(SimulationTestCase):
         self.assertEqual(msg.width, 640)
         self.assertEqual(msg.height, 480)
         self.assertEqual(len(msg.data), msg.step * msg.height)
+
+
+class TestSensorFrames(SimulationTestCase):
+    """Verify sensor data is stamped with frames that exist in the TF tree."""
+
+    def test_sensor_frame_ids(self):
+        """Each sensor topic uses its URDF frame, and that frame is under base_link."""
+        tf_buffer = Buffer()
+        TransformListener(tf_buffer, self.node)
+        for topic, (msg_type, expected_frame) in SENSOR_FRAMES.items():
+            with self.subTest(topic=topic):
+                msg = self._wait_for_message(msg_type, topic)
+                self.assertEqual(msg.header.frame_id, expected_frame)
+
+                end = time.monotonic() + 10.0
+                while (not tf_buffer.can_transform('base_link', expected_frame, Time())
+                       and time.monotonic() < end):
+                    rclpy.spin_once(self.node, timeout_sec=0.1)
+                self.assertTrue(
+                    tf_buffer.can_transform('base_link', expected_frame, Time()),
+                    f'No TF path from base_link to {expected_frame}')
 
 
 def _ground_truth_pose():

@@ -37,7 +37,7 @@ Places where the simulator does not yet meet the ICDs it implements. Each is a t
 
 | # | ICD item | Deviation | Impact | Fix |
 | --- | --- | --- | --- | --- |
-| DEV-01 | SNS-GNC-01, -02 | `header.frame_id` is Gazebo's sensor name (`rc_racer/base_footprint/imu_sensor`, `…/navsat_sensor`), not `imu_link` / `gps_link`. No TF frame exists with those names. `/camera` likely the same (to verify) | GNC cannot transform measurements into the body frame | Set the sensor frame IDs in `sensors.urdf.xacro` (or re-stamp in a small relay), and check frame IDs in the smoke test. **Before `state_estimation` uses frames** |
+| ~~DEV-01~~ | SNS-GNC-01, -02, camera | ✅ **Fixed 2026-11-16.** `header.frame_id` was Gazebo's sensor name (`rc_racer/base_footprint/imu_sensor`, `…/navsat_sensor`, `…/camera_sensor`), which is not in the TF tree | - | `<ignition_frame_id>` on each sensor in `sensors.urdf.xacro`; now `imu_link`, `gps_link`, `camera_optical_link`. Checked by `test_sensor_frame_ids` |
 | DEV-02 | SNS-GNC-01, -02, -03 | All covariances are **0** (IMU, GPS, wheel odometry) | Filters treat measurements as perfect | Set realistic noise in the sensor models and matching covariances; check in the smoke test. **Before `state_estimation`** |
 | DEV-03 | GNC-ACT-01 | No deadman: the Ackermann plugin keeps the last command if commands stop (to verify) | A crashed planner leaves the car driving in sim | Add a timeout or command relay; test it |
 | DEV-04 | GNC-ACT-01 | Steering responds with a ~1 s time constant ([SDP §4.2](Software-Development-Plan)) | Path following tuned in sim will be wrong on hardware | Phase 4 (accepted until then) |
@@ -56,3 +56,4 @@ Places where the simulator does not yet meet the ICDs it implements. Each is a t
 | Date | Change | Agreed by |
 | --- | --- | --- |
 | 2026-11-16 | Initial draft; deviations DEV-01…05 recorded | |
+| 2026-11-16 | DEV-01 fixed (sensor frame IDs) | |

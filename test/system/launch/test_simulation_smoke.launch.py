@@ -12,6 +12,7 @@ Validates:
       /navsat  (sensor_msgs/NavSatFix)
       /camera  (sensor_msgs/Image)
   - The car responds to /cmd_vel (Ackermann drive) and reports /wheel/odom
+  - Every process (including Gazebo) exits cleanly on shutdown
 
 This is the foundation for every other simulation-based test: if this
 fails, nothing downstream of the sensors or drive can be trusted.
@@ -30,6 +31,7 @@ import unittest
 import launch
 import launch_testing
 import launch_testing.actions
+import launch_testing.asserts
 import launch_testing.markers
 import rclpy
 from ament_index_python.packages import get_package_share_directory
@@ -179,3 +181,12 @@ class TestSimulationDrive(SimulationTestCase):
         self.assertGreater(
             end.x - start.x, MIN_DISTANCE_M,
             f'Car moved {end.x - start.x:.3f} m forward; expected > {MIN_DISTANCE_M} m')
+
+
+@launch_testing.post_shutdown_test()
+class TestCleanShutdown(unittest.TestCase):
+    """Verify the simulation shuts down cleanly."""
+
+    def test_exit_codes(self, proc_info):
+        """All processes, including Gazebo, exit with code 0 on SIGINT."""
+        launch_testing.asserts.assertExitCodes(proc_info)

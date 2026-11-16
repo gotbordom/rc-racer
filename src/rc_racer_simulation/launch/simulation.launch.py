@@ -16,9 +16,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -28,7 +27,6 @@ def generate_launch_description():
     """Generate launch description for RC Racer simulation."""
     # Package directories
     pkg_rc_racer_sim = get_package_share_directory('rc_racer_simulation')
-    pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
     # Launch arguments
     world_arg = DeclareLaunchArgument(
@@ -59,25 +57,21 @@ def generate_launch_description():
         value_type=str
     )
 
-    # Gazebo Fortress - server only (headless)
-    gz_sim_server = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
-        ),
-        launch_arguments={
-            'gz_args': ['-r -s ', world_path],  # -r = run, -s = server only
-        }.items(),
+    # Gazebo Fortress. Run `ign gazebo` directly rather than including
+    # ros_gz_sim's gz_sim.launch.py: that wraps it in `sh -c`, so the SIGINT
+    # sent on shutdown never reaches Gazebo and it gets SIGTERM'd after 5 s.
+    # Gazebo exiting (e.g. GUI window closed) shuts down the whole launch.
+    gz_sim_server = ExecuteProcess(
+        cmd=['ign', 'gazebo', '-r', '-s', world_path],  # -r = run, -s = server only
+        output='screen',
+        on_exit=Shutdown(),
         condition=IfCondition(LaunchConfiguration('headless'))
     )
 
-    # Gazebo Fortress - with GUI
-    gz_sim_gui = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
-        ),
-        launch_arguments={
-            'gz_args': ['-r ', world_path],  # -r = run (with GUI)
-        }.items(),
+    gz_sim_gui = ExecuteProcess(
+        cmd=['ign', 'gazebo', '-r', world_path],  # -r = run (with GUI)
+        output='screen',
+        on_exit=Shutdown(),
         condition=UnlessCondition(LaunchConfiguration('headless'))
     )
 

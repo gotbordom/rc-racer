@@ -56,6 +56,19 @@ if(BUILD_TESTING)
   )
 
   # ---------------------------------------------------------------------------
+  # System Test: Course World
+  # ---------------------------------------------------------------------------
+  # Validates: practice_course world matches its course file (cones, obstacles,
+  #            GPS origin)
+  # Timeout: Medium (Gazebo startup)
+  #
+  add_launch_test(
+    launch/test_course_world.launch.py
+    TARGET test_course_world
+    TIMEOUT 300
+  )
+
+  # ---------------------------------------------------------------------------
   # System Test: Full Stack Simulation
   # ---------------------------------------------------------------------------
   # Validates: Complete system in Gazebo with realistic sensors

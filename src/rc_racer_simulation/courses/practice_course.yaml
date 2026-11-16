@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+#
+# Practice Course - small RoboMagellan-style layout (~50 x 50 m)
+#
+# This file is the single source of truth for the course. The Gazebo world
+# (practice_course.world) is generated from it at build time by
+# scripts/generate_course_world.py, and later the car can load the same file
+# as its course map (start, waypoints, obstacles).
+#
+# Coordinates are WGS84 decimal degrees, like the competition hands out.
+# Location is a PLACEHOLDER: Alameda County Fairgrounds, Pleasanton, CA
+# (past RoboGames venue). Replace with the real course when known.
+#
+# Layout (local metres from start, X = east, Y = north):
+#
+#   30 |                       B2
+#      |
+#   15 |                                M2
+#    8 |                  tree_1             bench_1
+#    5 |             M1
+#  2.5 |       rock_1
+#    0 | START ->                                     finish
+#  -12 |                  B1
+#      +----------------------------------------------------
+#        0     8     15   20   25   30    35   40     45
+
+name: practice_course
+datum: WGS84
+
+# Start point. Also the world origin: the car spawns here facing east (+X).
+start:
+  latitude: 37.6602000
+  longitude: -121.8890000
+  elevation: 100.0
+
+# Waypoints are 18" orange traffic cones.
+#   mandatory: must be touched, in `order`
+#   bonus:     optional; `multiplier` (0.1 - 0.9) scales the score if touched
+#   finish:    destination
+waypoints:
+  - name: M1
+    type: mandatory
+    order: 1
+    latitude: 37.6602450
+    longitude: -121.8888300
+  - name: B1
+    type: bonus
+    multiplier: 0.5
+    latitude: 37.6600919
+    longitude: -121.8887733
+  - name: M2
+    type: mandatory
+    order: 2
+    latitude: 37.6603351
+    longitude: -121.8886033
+  - name: B2
+    type: bonus
+    multiplier: 0.3
+    latitude: 37.6604703
+    longitude: -121.8886600
+  - name: finish
+    type: finish
+    latitude: 37.6602000
+    longitude: -121.8884900
+
+# Static obstacles. shape: box (size: [x, y, z] metres) or
+# cylinder (radius, height metres). Optional yaw_deg.
+obstacles:
+  - name: rock_1          # between start and M1
+    shape: box
+    size: [1.0, 1.0, 0.5]
+    latitude: 37.6602225
+    longitude: -121.8889093
+  - name: tree_1
+    shape: cylinder
+    radius: 0.3
+    height: 3.0
+    latitude: 37.6602721
+    longitude: -121.8887167
+  - name: bench_1
+    shape: box
+    size: [2.0, 0.5, 0.5]
+    yaw_deg: 90
+    latitude: 37.6602721
+    longitude: -121.8885467

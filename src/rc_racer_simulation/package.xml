@@ -34,6 +34,9 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
 
+  <!-- Course world generation (scripts/generate_course_world.py) -->
+  <build_depend>python3-yaml</build_depend>
+
   <!-- Launch -->
   <exec_depend>ros2launch</exec_depend>
 

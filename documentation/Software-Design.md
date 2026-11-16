@@ -1,6 +1,8 @@
 # Software Design
 
-This section is aimed at providing a template of what the software on the system will be. Since the main board for this work will be an Nvidia Jetson nano, any diagrams will likely aim to show the many microservices running on this small board.
+This section is aimed at providing a template of what the software on the system will be.
+
+> The formal breakdown of the system into segments, subsystems and components, with interfaces and requirements, is in [System Architecture](System-Architecture) and [System Requirements](System-Requirements). This page keeps the original design notes and diagrams. Since the main board for this work will be an Nvidia Jetson nano, any diagrams will likely aim to show the many microservices running on this small board.
 
 ## Design
 

@@ -81,6 +81,28 @@ All source files must include a license header using the SPDX format:
 > (`ament_cmake_flake8`, `ament_cmake_pep257`, `ament_cmake_xmllint`) instead of `ament_lint_common`
 > in test packages.
 
+### 1.4 Architecture and Interface Documents
+
+The system is broken down like a satellite program (System → Segments → Subsystems → Components → Units), with an Interface Control Document (ICD) for each interface between siblings:
+
+| Document | Contains |
+| --- | --- |
+| [System Requirements](System-Requirements) | Numbered requirements (`REQ-...`), verification method, allocation, TBD register, open issues |
+| [System Architecture](System-Architecture) | Product breakdown tree, element IDs, N² interface charts, ICD register, verification levels |
+| [Architecture Conventions](Architecture-Conventions) | Units, frames (REP-103/105), naming, message types, QoS, lifecycle, health |
+| [Mission Orchestration](Mission-Orchestration) | Executive subsystem: behavior-tree missions and the capability catalogue |
+| `documentation/icd/` | ICDs, e.g. [ICD-SNS-GNC](ICD-SNS-GNC), [ICD-GNC-ACT](ICD-GNC-ACT), [ICD-VEH-TST](ICD-VEH-TST); [ICD Template](ICD-Template) |
+| `documentation/components/` | Component specs, e.g. [state_estimation](state_estimation); [Component Template](Component-Template) |
+
+**Definition of Ready** - before a component's code is written:
+
+1. Its component spec exists (status Draft or later).
+2. Every ICD it is party to exists (Draft or later).
+3. Its derived requirements are in System Requirements.
+4. Any simulator deviations it depends on ([ICD-VEH-TST §5](ICD-VEH-TST)) are fixed.
+
+Tests reference requirement IDs (e.g. `REQ-GNC-001`) in their docstrings.
+
 ---
 
 ## 2. Critical Design Rule: Testable Nodes

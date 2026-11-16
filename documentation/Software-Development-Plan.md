@@ -18,7 +18,7 @@ This document outlines the software development plan for the RC Racer autonomous
 
 | Phase                    | Status         | Description                                  |
 | ------------------------ | -------------- | -------------------------------------------- |
-| **Phase 1: Simulation**  | 🚧 In Progress | Gazebo world, robot model, sensor simulation |
+| **Phase 1: Simulation**  | 🚧 In Progress | Gazebo world, robot model, sensor simulation (see §4.7 exit criteria) |
 | **Phase 2: Perception**  | ⏳ Planned     | Object detection, state estimation           |
 | **Phase 3: Navigation**  | ⏳ Planned     | Localization, mapping, path planning         |
 | **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems                |
@@ -475,112 +475,158 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ## 4. Simulation Environment (Phase 1)
 
-> **This is the current development priority.**
+> **This is the current development priority.** See [4.7 Phase 1 Exit Criteria](#47-phase-1-exit-criteria).
 
 Simulation-first development allows testing without hardware, faster iteration, and reproducible test scenarios.
+
+**Simulator:** Gazebo Fortress (the ROS 2 Humble pairing of "new" Gazebo, formerly Ignition), via the `ros_gz` packages. Gazebo Classic is end-of-life and is not used.
 
 ### 4.1 Simulation Package Structure
 
 ```
 src/rc_racer_simulation/
-├── CMakeLists.txt
+├── CMakeLists.txt               # Also generates course worlds at build time
 ├── package.xml
 ├── urdf/
-│   ├── rc_racer.urdf.xacro      # Main robot description
+│   ├── rc_racer.urdf.xacro      # Main robot description + dimensions
 │   ├── chassis.urdf.xacro       # Chassis geometry
-│   ├── wheels.urdf.xacro        # Wheel joints and geometry
-│   └── sensors.urdf.xacro       # Sensor mounts and plugins
-├── meshes/                       # 3D models (optional, can use primitives)
-│   └── chassis.stl
+│   ├── wheels.urdf.xacro        # Steering hinges, wheels, Ackermann drive plugin
+│   └── sensors.urdf.xacro       # IMU, GPS, camera links and Gazebo sensors
 ├── worlds/
-│   ├── empty_course.world       # Basic testing world
-│   ├── cone_course.world        # Course with orange cones
-│   └── outdoor_terrain.world    # Varied terrain (grass, dirt, hills)
-├── config/
-│   └── gazebo_params.yaml       # Simulation parameters
+│   └── empty_course.world       # Flat test world; also the template for course worlds
+├── courses/
+│   └── practice_course.yaml     # Course file: start, cones, obstacles (WGS84)
+├── scripts/
+│   └── generate_course_world.py # Course file -> worlds/<name>.world (build time)
+├── test/
+│   └── test_generate_course_world.py
+├── config/                       # (reserved)
+├── meshes/                       # (reserved - primitives are used for now)
 └── launch/
-    ├── gazebo.launch.py         # Launch Gazebo world only
-    ├── spawn_robot.launch.py    # Spawn robot into running Gazebo
-    └── simulation.launch.py     # Full simulation (world + robot + sensors)
+    └── simulation.launch.py     # Gazebo + robot + bridge; args: world, headless
 ```
+
+A single launch file covers every case via arguments; separate `gazebo.launch.py` / `spawn_robot.launch.py` files are not needed.
 
 ### 4.2 Robot Model (URDF)
 
 Based on Traxxas Slash hardware specifications from `documentation/Rc-Car-Design.md`:
 
-| Component         | Value   | Source           |
-| ----------------- | ------- | ---------------- |
-| Wheelbase         | 384 mm  | Rc-Car-Design.md |
-| Wheel Diameter    | 67.4 mm | Rc-Car-Design.md |
-| Wheel Width       | 28.5 mm | Rc-Car-Design.md |
-| Final Drive Ratio | 9.384:1 | Rc-Car-Design.md |
-| Encoder PPR       | 128     | Rc-Car-Design.md |
+| Component         | Value                       | Source           |
+| ----------------- | --------------------------- | ---------------- |
+| Wheelbase         | 384 mm                      | Rc-Car-Design.md |
+| Wheel Diameter    | 67.4 mm                     | Rc-Car-Design.md |
+| Wheel Width       | 28.5 mm                     | Rc-Car-Design.md |
+| Final Drive Ratio | 9.384:1                     | Rc-Car-Design.md |
+| Encoder PPR       | 128                         | Rc-Car-Design.md |
+| Drivetrain        | 2WD, rear wheels driven     | Magnum 272 transmission |
+| Steering          | Ackermann, ±0.52 rad (~30°) | Stock Slash servo (approx.) |
+| Speed limit (sim) | ±3.0 m/s, ±3.0 m/s²         | Simulation setting |
 
-### 4.3 Simulated Sensors
+Front wheels are mounted on steering hinges (revolute about Z); the Gazebo `AckermannSteering` system computes the inner/outer steering angles and rear wheel speed from a `Twist` command.
 
-| Sensor             | Gazebo Plugin           | ROS Topic           | Update Rate |
-| ------------------ | ----------------------- | ------------------- | ----------- |
-| **GPS**            | `gazebo_ros_gps_sensor` | `/gps/fix`          | 10 Hz       |
-| **IMU**            | `gazebo_ros_imu_sensor` | `/imu/data`         | 100 Hz      |
-| **Camera**         | `gazebo_ros_camera`     | `/camera/image_raw` | 30 Hz       |
-| **Wheel Encoders** | `gazebo_ros_diff_drive` | `/odom`             | 50 Hz       |
+**Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction (`mu = 1.0` on the tires). Not modelled: tire slip/deformation, suspension, motor torque curves, or terrain-dependent friction.
 
-### 4.4 Gazebo World Features
+### 4.3 Simulated Sensors and Topics
+
+All Gazebo topics reach ROS 2 through `ros_gz_bridge`. Sensors flow one way (Gazebo → ROS); commands flow one way (ROS → Gazebo).
+
+| Topic          | Type                       | Direction    | Source (Gazebo system)  | Rate   |
+| -------------- | -------------------------- | ------------ | ----------------------- | ------ |
+| `/imu`         | `sensor_msgs/Imu`          | gz → ROS     | `Imu`                   | 100 Hz |
+| `/navsat`      | `sensor_msgs/NavSatFix`    | gz → ROS     | `NavSat`                | 10 Hz  |
+| `/camera`      | `sensor_msgs/Image`        | gz → ROS     | `Sensors` (ogre2)       | 30 Hz  |
+| `/camera_info` | `sensor_msgs/CameraInfo`   | gz → ROS     | `Sensors` (ogre2)       | 30 Hz  |
+| `/wheel/odom`  | `nav_msgs/Odometry`        | gz → ROS     | `AckermannSteering`     | 50 Hz  |
+| `/joint_states`| `sensor_msgs/JointState`   | gz → ROS     | `JointStatePublisher`   | -      |
+| `/clock`       | `rosgraph_msgs/Clock`      | gz → ROS     | (simulation time)       | -      |
+| `/cmd_vel`     | `geometry_msgs/Twist`      | ROS → gz     | `AckermannSteering`     | -      |
+
+`/wheel/odom` is computed from wheel rotation and stands in for the wheel encoders. It is deliberately not named `/odom`: the fused estimate published by `state_estimation` will own `/odom`.
+
+Sensors are noise-free except the IMU (Gaussian noise on angular velocity and acceleration). The camera renders with OGRE 2; on machines without a GPU (e.g. CI) it uses software rendering (`LIBGL_ALWAYS_SOFTWARE=1`).
+
+### 4.4 Worlds and Course Files
 
 **Empty Course** (`empty_course.world`):
 
-- Flat ground plane
-- Basic lighting
-- For initial testing
+- Flat ground plane, sun, origin marker and X/Y axes
+- Required systems: Physics, UserCommands, SceneBroadcaster, Sensors, Imu, NavSat
+- `spherical_coordinates` set so GPS reports real lat/lon
+- Template for all generated course worlds
 
-**Cone Course** (`cone_course.world`):
+**Course files** (`courses/<name>.yaml`) are the single source of truth for a RoboMagellan course. Like the competition hand-out, they list the start point, waypoint cones (mandatory with `order`, bonus with `multiplier`, finish) and obstacles in WGS84 decimal degrees. At build time, CMake runs `generate_course_world.py` on every course file to produce `worlds/<name>.world`:
 
-- Orange traffic cones as waypoints
-- Start/finish markers
-- For navigation testing
+- The start point is the world origin (`spherical_coordinates`); the car spawns there facing east (+X)
+- Each waypoint becomes an 18" orange cone built from primitives (works offline, no Fuel download). Cones are dynamic, so a car that bumps one moves it
+- Each obstacle becomes a static box or cylinder
 
-**Outdoor Terrain** (`outdoor_terrain.world`):
+Because the world is generated from the course file, the same file can later be loaded by the car as its course map, and tests can compare sim positions against it.
 
-- Height map terrain (grass, dirt, hills)
-- Varied friction coefficients
-- For realistic testing
+**Practice Course** (`practice_course.yaml`): ~50 × 50 m, 2 mandatory cones (ordered), 2 bonus cones, a finish cone, and 3 static obstacles (one between the start and the first cone). Its location is a **placeholder** (Alameda County Fairgrounds, Pleasanton, CA) until a real course is known.
 
-### 4.5 Phase 1 Implementation Tasks
+**Planned:**
 
-| Task | Commit                                           | Description                                          |
-| ---- | ------------------------------------------------ | ---------------------------------------------------- |
-| 1    | `simulation: Create rc_racer_simulation package` | package.xml, CMakeLists.txt, directory structure     |
-| 2    | `simulation: Add basic URDF robot model`         | Chassis, wheels, joints based on Traxxas Slash specs |
-| 3    | `simulation: Add sensor plugins to URDF`         | GPS, IMU, camera Gazebo plugins                      |
-| 4    | `simulation: Create empty_course world`          | Basic Gazebo world for testing                       |
-| 5    | `simulation: Create simulation launch file`      | Launch Gazebo + spawn robot                          |
-| 6    | `simulation: Verify in Docker`                   | Test X11 GUI works in dev container                  |
-| 7    | `simulation: Add cone_course world`              | Course with orange cone waypoints                    |
-| 8    | `simulation: Connect to system tests`            | Update test_full_stack_sim.launch.py                 |
+- **Full-scale course:** up to the 1,000 ft (~305 m) straight-line limit, for endurance/planning tests
+- **Outdoor Terrain:** height-map terrain (grass, dirt, hills) with per-surface friction
+
+### 4.5 Simulation Tests
+
+| Test | Package | Runs in | Validates |
+| ---- | ------- | ------- | --------- |
+| `test_generate_course_world` | `rc_racer_simulation` | Nightly | Geodetic conversion, course validation, generated SDF |
+| `test_simulation_smoke` | `rc_racer_system_tests` | Nightly | `/clock` advances; IMU, GPS, camera publish plausible data; car drives forward on `/cmd_vel`; clean shutdown |
+| `test_course_world` | `rc_racer_system_tests` | Nightly | Practice course matches its course file: all cones and obstacles present, cones at course positions and upright, GPS at start = course start; clean shutdown |
+
+Simulation packages are skipped by the fast CI pipeline (its image has no Gazebo) and run nightly inside the simulation image. See [3.5 System / End-to-End Tests](#35-system--end-to-end-tests).
 
 ### 4.6 Running the Simulation
 
-**Start simulation (inside Docker container):**
+**Run the simulation tests (from host, same steps as nightly CI):**
 
 ```bash
-# Terminal 1: Start dev container
-docker compose up -d dev
-docker compose exec dev bash
+./scripts/run-system-tests.sh
+```
 
-# Terminal 2 (inside container): Launch simulation
-ros2 launch rc_racer_simulation simulation.launch.py
+**Watch and drive it (GUI):**
 
-# Terminal 3 (inside container): Verify topics
+```bash
+# Terminal 1 (host): start Gazebo with GUI
+xhost +local:docker
+cd docker && docker compose up simulation-gui
+
+# Terminal 2 (host): drive from the dev container
+cd docker && docker compose up -d dev && docker compose exec dev bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+`simulation-gui` mounts `src/rc_racer_simulation` and rebuilds it on start, so URDF/world/launch/course edits only need `docker compose restart simulation-gui`.
+
+**Inside the dev container (headless or a specific world):**
+
+```bash
+ros2 launch rc_racer_simulation simulation.launch.py headless:=true
+ros2 launch rc_racer_simulation simulation.launch.py world:=practice_course.world
+
+# Verify topics
 ros2 topic list
-ros2 topic echo /gps/fix
-ros2 topic echo /imu/data
+ros2 topic echo /navsat
+ros2 topic echo /wheel/odom
 ```
 
-**Launch with specific world:**
+**Developing nodes against the simulation:** leave the simulation running; build and restart only your node in the dev container. Gazebo only needs a restart when the robot model, world or course changes.
 
-```bash
-ros2 launch rc_racer_simulation simulation.launch.py world:=cone_course.world
-```
+### 4.7 Phase 1 Exit Criteria
+
+Phase 1 is complete when all of the following are true:
+
+| Criterion | Status |
+| --------- | ------ |
+| Robot model with IMU, GPS, camera and Ackermann drive | ✅ Done |
+| Simulation tests green in the nightly pipeline | ✅ Done |
+| Practice cone course generated from a course file | ✅ Done |
+| Simulation runs from the dev container (Gazebo Fortress) | ✅ Done |
+| Car driven manually around the practice course in the GUI, with no visual/physics issues found (wheel orientation, steering direction, chassis height, camera view) | ⏳ Pending |
 
 ---
 

@@ -66,7 +66,8 @@ jobs:
       # =========================================================================
       # C++ Dependency Tracking
       # =========================================================================
-      # Build inside container, mount workspace so build artifacts persist
+      # Build inside container, mount workspace so build artifacts persist.
+      # Simulation packages need Gazebo (not in the CI image); same skip as ci.yml
       - name: Build with compile commands for C++ dependency tracking
         run: |
           mkdir -p build install log
@@ -74,7 +75,9 @@ jobs:
             -v ${{ github.workspace }}:/ros2_ws \
             -w /ros2_ws \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            bash -c "source /opt/ros/humble/setup.bash && colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            bash -c "source /opt/ros/humble/setup.bash && colcon build \
+              --packages-skip rc_racer_simulation rc_racer_system_tests \
+              --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 
       - name: Generate C++ build SBOM
         run: |
@@ -85,8 +88,13 @@ jobs:
       # =========================================================================
       # Vulnerability Scanning (Grype)
       # =========================================================================
+      # Install the latest Grype rather than download-grype@v4, which pins
+      # v0.80.0: that version reads the old (schema v5) vulnerability DB, which
+      # is no longer updated, so it fails with "db ... built N weeks ago".
       - name: Install Grype
-        uses: anchore/scan-action/download-grype@v4
+        run: |
+          curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
+          grype version
 
       - name: Scan Docker image SBOM for vulnerabilities
         run: |
@@ -142,21 +150,21 @@ jobs:
 
       - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('vuln-image-report.sarif') != ''
         with:
           sarif_file: vuln-image-report.sarif
           category: docker-image
 
       - name: Upload source SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('vuln-source-report.sarif') != ''
         with:
           sarif_file: vuln-source-report.sarif
           category: source-code
 
       - name: Upload C++ SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('vuln-cpp-report.sarif') != ''
         with:
           sarif_file: vuln-cpp-report.sarif
           category: cpp-build

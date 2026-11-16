@@ -43,14 +43,17 @@ RUN apt-get update && apt-get install -y \
     # Computer vision
     ros-humble-cv-bridge \
     ros-humble-image-transport \
-    # Simulation
-    ros-humble-gazebo-ros \
-    ros-humble-gazebo-ros-pkgs \
-    ros-humble-gazebo-plugins \
+    # Simulation (Gazebo Fortress - matches Dockerfile.simulation)
+    ros-humble-ros-gz \
+    ros-humble-ros-gz-sim \
+    ros-humble-ros-gz-bridge \
+    ros-humble-ros-gz-image \
     ros-humble-robot-state-publisher \
     ros-humble-xacro \
     ros-humble-joint-state-publisher \
     ros-humble-joint-state-publisher-gui \
+    # Manual driving (ros2 run teleop_twist_keyboard teleop_twist_keyboard)
+    ros-humble-teleop-twist-keyboard \
     # Visualization
     ros-humble-rviz2 \
     ros-humble-rqt \

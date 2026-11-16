@@ -449,12 +449,11 @@ colcon test --packages-select rc_racer_system_tests
 colcon test-result --verbose
 ```
 
-**Docker Orchestrated (preferred):**
+**From the host (preferred - same steps as nightly CI):**
 
 ```bash
-cd test/system/docker
-docker compose up --abort-on-container-exit
-docker compose down
+./scripts/run-system-tests.sh                        # all system tests
+./scripts/run-system-tests.sh test_simulation_smoke  # tests matching a regex
 ```
 
 **CI/CD Pipeline:**
@@ -1039,7 +1038,7 @@ ament_clang_format --check src/<package>
    ```
 4. If needed, add Gazebo world file to `test/system/worlds/`
 5. Test locally (inside container): `colcon test --packages-select rc_racer_system_tests`
-6. Test via Docker orchestration (from host): `cd test/system/docker && docker compose up --abort-on-container-exit`
+6. Test from the host (same as nightly CI): `./scripts/run-system-tests.sh test_<name>`
 
 ---
 
@@ -1139,8 +1138,8 @@ colcon test --packages-skip rc_racer_system_tests
 # Full test suite (nightly) - inside ci container
 colcon test
 
-# System tests only (separate orchestration from host)
-cd test/system/docker && docker compose up --abort-on-container-exit --exit-code-from system-tests
+# System tests only (from host, runs in the simulation image)
+./scripts/run-system-tests.sh
 ```
 
 ### 8.5 CI Docker Images

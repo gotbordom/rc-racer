@@ -43,6 +43,8 @@ services:
   # Simulation Container - With GUI (for development)
   # ===========================================================================
   # Runs Gazebo with GUI - requires: xhost +local:docker
+  # Mounts rc_racer_simulation from the working tree and rebuilds it on start,
+  # so URDF/world/launch edits only need a restart (no image rebuild)
   simulation-gui:
     build:
       context: ..
@@ -59,14 +61,22 @@ services:
       - ROS_LOCALHOST_ONLY=0
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     volumes:
+      # Live simulation package (overrides the copy baked into the image)
+      - ../src/rc_racer_simulation:/ros2_ws/src/rc_racer_simulation:ro
       # X11 for Gazebo GUI
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # GPU support (if available)
       - /dev/dri:/dev/dri
     networks:
       - ros-network
-    # GUI mode
-    command: ["ros2", "launch", "rc_racer_simulation", "simulation.launch.py", "headless:=false"]
+    # GUI mode - rebuild the mounted package, then launch
+    command:
+      - bash
+      - -c
+      - >
+        colcon build --packages-select rc_racer_simulation &&
+        source install/setup.bash &&
+        ros2 launch rc_racer_simulation simulation.launch.py headless:=false
 
   # ===========================================================================
   # Development Container (Building & Testing)

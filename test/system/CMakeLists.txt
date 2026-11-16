@@ -30,8 +30,8 @@ find_package(ament_cmake REQUIRED)
 # Run via:
 #   colcon test --packages-select rc_racer_system_tests
 #
-# Or with Docker:
-#   cd test/system/docker && docker-compose up --abort-on-container-exit
+# Or from the host (runs in the simulation image, same as nightly CI):
+#   ./scripts/run-system-tests.sh
 #
 #===============================================================================
 

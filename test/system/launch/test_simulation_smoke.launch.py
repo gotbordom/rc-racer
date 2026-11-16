@@ -11,7 +11,8 @@ Validates:
       /imu     (sensor_msgs/Imu)
       /navsat  (sensor_msgs/NavSatFix)
       /camera  (sensor_msgs/Image)
-  - The car responds to /cmd_vel (Ackermann drive) and reports /wheel/odom
+  - The car tracks /cmd_vel (Ackermann drive): ground-truth speed and turn
+    rate match the command, and /wheel/odom is published
   - Every process (including Gazebo) exits cleanly on shutdown
 
 This is the foundation for every other simulation-based test: if this
@@ -25,6 +26,8 @@ CI/CD: Nightly
 
 import math
 import os
+import re
+import subprocess
 import time
 import unittest
 
@@ -37,6 +40,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
@@ -48,10 +52,19 @@ SENSOR_TIMEOUT_S = 90.0
 
 GRAVITY = 9.81
 
-# Drive test: command forward at DRIVE_SPEED for DRIVE_TIME_S (wall clock)
+# Drive tests: command (DRIVE_SPEED, turn rate) for DRIVE_TIME_S of SIM time and
+# compare against Gazebo ground truth. Tolerances allow for the acceleration
+# ramp and a little tire slip, but catch a car that skids instead of rolling.
+# The turn test lets the steering settle first: Fortress' AckermannSteering
+# steers with a fixed ~1 s time constant (no gain parameter until Garden).
 DRIVE_SPEED = 0.5
-DRIVE_TIME_S = 5.0
-MIN_DISTANCE_M = 0.2
+DRIVE_TURN_RATE = 0.5      # rad/s; radius 1 m, within the steering limit
+DRIVE_TIME_S = 3.0
+STEERING_SETTLE_S = 3.0
+SPEED_TOLERANCE = 0.2      # fraction of commanded
+TURN_RATE_TOLERANCE = 0.2  # fraction of commanded
+
+POSE_RE = re.compile(r'\[\s*(\S+)\s+(\S+)\s+(\S+)\s*\]')
 
 
 @launch_testing.markers.keep_alive
@@ -153,34 +166,101 @@ class TestSimulationSensors(SimulationTestCase):
         self.assertEqual(len(msg.data), msg.step * msg.height)
 
 
-class TestSimulationDrive(SimulationTestCase):
-    """Verify the Ackermann drive responds to velocity commands."""
+def _ground_truth_pose():
+    """Return the car's true (x, y, yaw) from Gazebo, or None."""
+    try:
+        out = subprocess.run(['ign', 'model', '-m', 'rc_racer', '-p'],
+                             capture_output=True, text=True, timeout=15).stdout
+    except subprocess.TimeoutExpired:
+        return None
+    matches = POSE_RE.findall(out)
+    if len(matches) < 2:
+        return None
+    (x, y, _), (_, _, yaw) = matches[-2], matches[-1]
+    return float(x), float(y), float(yaw)
 
-    def _drive(self, linear_x, angular_z, duration):
-        """Publish a constant Twist on /cmd_vel for duration seconds, then stop."""
+
+class TestSimulationDrive(SimulationTestCase):
+    """Verify the Ackermann drive tracks velocity commands (ground truth)."""
+
+    def setUp(self):
+        """Create a test node on simulation time."""
+        self.node = rclpy.create_node(
+            'test_simulation_drive',
+            parameter_overrides=[Parameter('use_sim_time', value=True)])
+
+    def _sim_time(self):
+        return self.node.get_clock().now().nanoseconds * 1e-9
+
+    def _drive(self, linear_x, angular_z, sim_duration, settle=0.0):
+        """
+        Publish a constant Twist for settle + sim_duration SIM seconds, then stop.
+
+        Measures over sim_duration only, after settle seconds have passed.
+        Returns (start_pose, end_pose, elapsed_sim_seconds) from ground truth.
+        """
         pub = self.node.create_publisher(Twist, '/cmd_vel', 10)
         cmd = Twist()
         cmd.linear.x = linear_x
         cmd.angular.z = angular_z
         try:
-            end = time.monotonic() + duration
-            while time.monotonic() < end:
+            wall_end = time.monotonic() + SENSOR_TIMEOUT_S
+            while self._sim_time() == 0.0 and time.monotonic() < wall_end:
+                rclpy.spin_once(self.node, timeout_sec=0.1)
+            self.assertGreater(self._sim_time(), 0.0, 'No simulation time on /clock')
+
+            settle_end = self._sim_time() + settle
+            while self._sim_time() < settle_end:
                 pub.publish(cmd)
                 rclpy.spin_once(self.node, timeout_sec=0.05)
-            pub.publish(Twist())
+
+            start = _ground_truth_pose()
+            t0 = self._sim_time()
+            while self._sim_time() - t0 < sim_duration:
+                pub.publish(cmd)
+                rclpy.spin_once(self.node, timeout_sec=0.05)
+            end = _ground_truth_pose()
+            elapsed = self._sim_time() - t0
+
+            stop_end = self._sim_time() + 1.0
+            while self._sim_time() < stop_end:
+                pub.publish(Twist())
+                rclpy.spin_once(self.node, timeout_sec=0.05)
         finally:
             self.node.destroy_publisher(pub)
 
-    def test_drives_forward(self):
-        """Commanding forward velocity moves the car forward in /wheel/odom."""
-        start = self._wait_for_message(Odometry, '/wheel/odom').pose.pose.position
+        self.assertIsNotNone(start, 'Could not read car pose from Gazebo')
+        self.assertIsNotNone(end, 'Could not read car pose from Gazebo')
+        return start, end, elapsed
 
-        self._drive(DRIVE_SPEED, 0.0, DRIVE_TIME_S)
+    def test_drives_straight_at_commanded_speed(self):
+        """Forward command moves the car straight at about the commanded speed."""
+        (x0, y0, yaw0), (x1, y1, yaw1), elapsed = self._drive(DRIVE_SPEED, 0.0, DRIVE_TIME_S)
 
-        end = self._wait_for_message(Odometry, '/wheel/odom').pose.pose.position
-        self.assertGreater(
-            end.x - start.x, MIN_DISTANCE_M,
-            f'Car moved {end.x - start.x:.3f} m forward; expected > {MIN_DISTANCE_M} m')
+        speed = math.hypot(x1 - x0, y1 - y0) / elapsed
+        self.assertAlmostEqual(
+            speed, DRIVE_SPEED, delta=DRIVE_SPEED * SPEED_TOLERANCE,
+            msg=f'Car moved at {speed:.3f} m/s; commanded {DRIVE_SPEED} m/s '
+                '(wheels skidding or dragging?)')
+        heading_change = math.atan2(math.sin(yaw1 - yaw0), math.cos(yaw1 - yaw0))
+        self.assertLess(abs(heading_change), 0.1, 'Car veered while driving straight')
+
+    def test_turns_at_commanded_rate(self):
+        """Turn command yaws the car at about the commanded rate (no front-end skid)."""
+        (_, _, yaw0), (_, _, yaw1), elapsed = self._drive(
+            DRIVE_SPEED, DRIVE_TURN_RATE, DRIVE_TIME_S, settle=STEERING_SETTLE_S)
+
+        # Yaw change over 3 s at 0.5 rad/s is 1.5 rad, < pi, so atan2 unwraps it
+        turn_rate = math.atan2(math.sin(yaw1 - yaw0), math.cos(yaw1 - yaw0)) / elapsed
+        self.assertAlmostEqual(
+            turn_rate, DRIVE_TURN_RATE, delta=DRIVE_TURN_RATE * TURN_RATE_TOLERANCE,
+            msg=f'Car turned at {turn_rate:.3f} rad/s; commanded {DRIVE_TURN_RATE} rad/s '
+                '(front wheels sliding instead of steering?)')
+
+    def test_wheel_odometry_published(self):
+        """Wheel odometry (encoder stand-in) is published on /wheel/odom."""
+        msg = self._wait_for_message(Odometry, '/wheel/odom')
+        self.assertEqual(msg.header.frame_id, 'odom')
 
 
 @launch_testing.post_shutdown_test()

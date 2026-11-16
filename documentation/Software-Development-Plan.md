@@ -89,7 +89,7 @@ The system is broken down like a satellite program (System → Segments → Subs
 | --- | --- |
 | [System Requirements](System-Requirements) | Numbered requirements (`REQ-...`), verification method, allocation, TBD register, open issues |
 | [System Architecture](System-Architecture) | Product breakdown tree, element IDs, N² interface charts, ICD register, verification levels |
-| [Architecture Conventions](Architecture-Conventions) | Units, frames (REP-103/105), naming, message types, QoS, lifecycle, health |
+| [Architecture Conventions](Architecture-Conventions) | Units, reference frames and the **TF registry** (REP-103/105), naming, message types, QoS, lifecycle, health |
 | [Mission Orchestration](Mission-Orchestration) | Executive subsystem: behavior-tree missions and the capability catalogue |
 | `documentation/icd/` | ICDs, e.g. [ICD-SNS-GNC](ICD-SNS-GNC), [ICD-GNC-ACT](ICD-GNC-ACT), [ICD-VEH-TST](ICD-VEH-TST); [ICD Template](ICD-Template) |
 | `documentation/components/` | Component specs, e.g. [state_estimation](state_estimation); [Component Template](Component-Template) |

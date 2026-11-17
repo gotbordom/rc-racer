@@ -5,7 +5,7 @@
 //
 // Pure C++, no ROS: used by state_estimation for the predict step and
 // reusable by planning_control. A RobotFrame turns body-frame velocities
-// into the next 2D pose, after limiting them to what the chassis can do.
+// into the next 2D pose, and says which velocities the chassis can produce.
 
 #ifndef STATE_ESTIMATION__ROBOT_FRAME_HPP_
 #define STATE_ESTIMATION__ROBOT_FRAME_HPP_
@@ -54,6 +54,11 @@ double normalize_angle(double angle);
 ///
 /// Integration is exact for constant (v, omega) over dt: the pose moves
 /// along a circular arc, or a straight line when omega is ~0.
+///
+/// Integration does not apply constrain(): a measured yaw rate beyond what
+/// the steering allows means the car is sliding, and the pose must follow
+/// the real motion. Callers that command motion (planning) constrain first;
+/// state estimation uses constrain() to detect slip.
 class RobotFrame
 {
 public:
@@ -62,17 +67,15 @@ public:
   /// Name used for the `motion_model` parameter.
   virtual std::string name() const = 0;
 
-  /// Limit the inputs to what this chassis can physically do.
+  /// Limit the inputs to what this chassis can produce without slipping.
   virtual VelocityInputs constrain(const VelocityInputs & inputs) const = 0;
 
-  /// Next pose after dt seconds with the constrained inputs.
+  /// Next pose after dt seconds with constant inputs (not constrained).
   /// @throws std::invalid_argument if dt is negative or not finite.
   Pose2D get_next_pose_estimate(
     const Pose2D & pose, const VelocityInputs & inputs, double dt) const;
 
-  /// Jacobians of get_next_pose_estimate(), evaluated at the constrained
-  /// inputs. Derivatives are with respect to the constrained inputs; a
-  /// clamped yaw rate is treated as locally free.
+  /// Jacobians of get_next_pose_estimate().
   /// @throws std::invalid_argument if dt is negative or not finite.
   PoseJacobians jacobians(
     const Pose2D & pose, const VelocityInputs & inputs, double dt) const;

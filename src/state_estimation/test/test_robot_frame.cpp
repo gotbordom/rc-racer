@@ -167,9 +167,10 @@ TEST(AckermannSteeringTest, ClampedTurnUsesMinimumRadius)
 {
   const AckermannSteering car = make_car();
   const double min_radius = kWheelbase / std::tan(kMaxSteering);
+  const VelocityInputs in = car.constrain({1.0, 50.0});
   Pose2D pose;
   for (int i = 0; i < 100; ++i) {
-    pose = car.get_next_pose_estimate(pose, {1.0, 50.0}, 0.02);
+    pose = car.get_next_pose_estimate(pose, in, 0.02);
     EXPECT_NEAR(std::hypot(pose.x, pose.y - min_radius), min_radius, 1e-9);
   }
 }
@@ -178,10 +179,19 @@ TEST(AckermannSteeringTest, CannotTurnInPlace)
 {
   const AckermannSteering car = make_car();
   const Pose2D start{1.0, 1.0, 0.5};
-  const Pose2D end = car.get_next_pose_estimate(start, {0.0, 1.0}, 1.0);
+  const Pose2D end = car.get_next_pose_estimate(start, car.constrain({0.0, 1.0}), 1.0);
   EXPECT_NEAR(end.x, start.x, kTol);
   EXPECT_NEAR(end.y, start.y, kTol);
   EXPECT_NEAR(end.yaw, start.yaw, kTol);
+}
+
+TEST(AckermannSteeringTest, IntegrationFollowsASlideBeyondTheLimit)
+{
+  // A yaw rate the steering cannot produce is a slide; the pose must still
+  // follow it, or a skid would corrupt the heading for good.
+  const AckermannSteering car = make_car();
+  const Pose2D end = car.get_next_pose_estimate({}, {0.0, 1.0}, 1.0);
+  EXPECT_NEAR(end.yaw, 1.0, kTol);
 }
 
 TEST(AckermannSteeringTest, SteeringConversionsRoundTrip)

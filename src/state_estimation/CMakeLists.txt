@@ -17,9 +17,11 @@ find_package(Eigen3 REQUIRED)
 # Include directories
 include_directories(include)
 
-# Logic library (pure C++, no ROS): motion models
+# Logic library (pure C++, no ROS): motion models and filter
 add_library(${PROJECT_NAME}_logic
   src/robot_frame.cpp
+  src/extended_kalman_filter.cpp
+  src/state_estimation_logic.cpp
 )
 target_include_directories(${PROJECT_NAME}_logic PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -74,6 +76,8 @@ if(BUILD_TESTING)
   # ament_target_dependencies(test_example rclcpp std_msgs sensor_msgs geometry_msgs)
   ament_add_gtest(test_robot_frame test/test_robot_frame.cpp)
   target_link_libraries(test_robot_frame ${PROJECT_NAME}_logic)
+  ament_add_gtest(test_state_estimation_logic test/test_state_estimation_logic.cpp)
+  target_link_libraries(test_state_estimation_logic ${PROJECT_NAME}_logic)
 
   # -----------------------------------------------------------------------------
   # Unit Tests (Python with pytest)

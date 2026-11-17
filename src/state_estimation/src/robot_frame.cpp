@@ -45,9 +45,8 @@ Pose2D RobotFrame::get_next_pose_estimate(
   const Pose2D & pose, const VelocityInputs & inputs, double dt) const
 {
   check_dt(dt);
-  const VelocityInputs in = constrain(inputs);
-  const double v = in.linear;
-  const double w = in.angular;
+  const double v = inputs.linear;
+  const double w = inputs.angular;
   const double turn = w * dt;
 
   Pose2D next;
@@ -68,9 +67,8 @@ PoseJacobians RobotFrame::jacobians(
   const Pose2D & pose, const VelocityInputs & inputs, double dt) const
 {
   check_dt(dt);
-  const VelocityInputs in = constrain(inputs);
-  const double v = in.linear;
-  const double w = in.angular;
+  const double v = inputs.linear;
+  const double w = inputs.angular;
   const double turn = w * dt;
 
   PoseJacobians j;

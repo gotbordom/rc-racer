@@ -58,16 +58,24 @@ It does **not**:
 | `robot.wheelbase` | double | 0.384 | m, used by the bicycle model |
 | `inputs.imu.timeout` | double | 0.1 | s |
 | `inputs.wheel_odom.timeout` | double | 0.2 | s |
-| `process_noise.*` | double | TBD | Tuned in sim |
-| `slip.threshold` | double | TBD | Wheel vs IMU speed mismatch (m/s) that counts as slip |
+| `robot.max_steering_angle` | double | 0.52 | rad, used by the bicycle model's slide check |
+| `process_noise.accel` | double | 0.05 (TBD) | (m/s²)²/s, unmodelled forward acceleration while IMU acceleration is the input |
+| `process_noise.accel_no_imu` | double | 4.0 (TBD) | (m/s²)²/s, forward acceleration when the IMU is stale |
+| `process_noise.yaw_accel` | double | 1.0 (TBD) | (rad/s²)²/s, unmodelled change in yaw rate |
+| `slip.threshold` | double | 0.3 (TBD) | m/s. Wheel speed minus predicted speed beyond this, plus 3σ of the predicted speed, counts as slip |
+| `slip.yaw_rate_margin` | double | 0.2 (TBD) | rad/s. Yaw rate beyond what the motion model allows at this speed that counts as a slide |
+| `slip.variance_scale` | double | 1e4 (TBD) | Factor on the wheel-speed variance while slipping |
+| `initial_covariance.pose` / `.speed` / `.yaw_rate` | double | 1e-6 / 1.0 / 0.1 | Covariance diagonal after start and `~/reset` |
 
 ## 4. Behaviour
 
 - **State:** 2D: `x, y, yaw` in `odom`, plus forward speed `v` and yaw rate `ω` (Open Item 3).
 - **Lifecycle:** `configure` validates parameters and builds the logic object. `activate` starts subscriptions, timer and publishers, with the estimate at the origin. `deactivate` stops publishing. `cleanup` drops state.
-- **Predict** on a fixed-rate timer using the motion model.
-- **Update** on each `/imu` (yaw rate, acceleration) and `/wheel/odom` (forward speed).
-- **Slip:** when wheel speed and IMU-derived speed disagree by more than `slip.threshold`, inflate the wheel-odometry variance until they agree again.
+- **Predict** on a fixed-rate timer using the motion model, with the latest IMU forward acceleration as the speed input (not reused once the IMU is stale).
+- **Update** on each `/imu` (yaw rate) and `/wheel/odom` (forward speed).
+- **IMU orientation:** only roll and pitch are used, to remove gravity from the forward acceleration. The absolute yaw is world-frame data and is ignored (ISSUE-002).
+- **Motion model:** integration follows the measured yaw rate even beyond the steering limit, so a slide cannot corrupt the heading. The model's limit (`RobotFrame::constrain`) is used only to detect slides.
+- **Slip:** two checks. (1) *Wheel slip*: wheel speed and the IMU-predicted speed disagree by more than `slip.threshold` plus 3σ of the predicted speed. (2) *Slide*: the yaw rate exceeds what the motion model allows at the current speed by `slip.yaw_rate_margin`; this never triggers for the unicycle. While either is detected, the wheel-odometry variance is multiplied by `slip.variance_scale`, until they agree again.
 - **Degraded modes:**
 
 | Missing input | Behaviour | Diagnostics |
@@ -75,6 +83,7 @@ It does **not**:
 | `/wheel/odom` | Continue on IMU; speed variance grows | WARN |
 | `/imu` | Continue on wheel speed only; yaw variance grows quickly | ERROR |
 | both | Keep predicting with growing covariance; do not stop publishing | ERROR |
+| NaN/Inf in an input | Sample rejected and counted | WARN |
 | NaN/Inf in estimate | Reset to last good estimate with inflated covariance | ERROR |
 
 ## 5. Health

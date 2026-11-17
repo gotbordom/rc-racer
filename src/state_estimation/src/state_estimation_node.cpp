@@ -57,6 +57,11 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("inputs.wheel_odom.scale_stddev", d.wheel_scale_stddev);
   declare_parameter("slip.threshold", d.slip_threshold);
   declare_parameter("slip.yaw_rate_margin", d.slip_yaw_rate_margin);
+  declare_parameter("slip.window", d.slip_window);
+  declare_parameter("slip.max_duration", d.slip_max_duration);
+  declare_parameter("stationary.speed", d.stationary_speed);
+  declare_parameter("stationary.yaw_rate", d.stationary_yaw_rate);
+  declare_parameter("stationary.accel", d.stationary_accel);
   declare_parameter("slip.variance_scale", d.slip_variance_scale);
   declare_parameter("initial_covariance.pose", d.initial_pose_variance);
   declare_parameter("initial_covariance.speed", d.initial_speed_variance);
@@ -80,6 +85,11 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.wheel_scale_stddev = get_parameter("inputs.wheel_odom.scale_stddev").as_double();
   c.slip_threshold = get_parameter("slip.threshold").as_double();
   c.slip_yaw_rate_margin = get_parameter("slip.yaw_rate_margin").as_double();
+  c.slip_window = get_parameter("slip.window").as_double();
+  c.slip_max_duration = get_parameter("slip.max_duration").as_double();
+  c.stationary_speed = get_parameter("stationary.speed").as_double();
+  c.stationary_yaw_rate = get_parameter("stationary.yaw_rate").as_double();
+  c.stationary_accel = get_parameter("stationary.accel").as_double();
   c.slip_variance_scale = get_parameter("slip.variance_scale").as_double();
   c.initial_pose_variance = get_parameter("initial_covariance.pose").as_double();
   c.initial_speed_variance = get_parameter("initial_covariance.speed").as_double();
@@ -132,6 +142,7 @@ StateEstimationNode::CallbackReturn StateEstimationNode::on_activate(
   logic_->reset();
   reported_resets_ = 0;
   reported_rejects_ = 0;
+  reported_slip_events_ = 0;
   last_tick_.reset();
   odom_pub_->on_activate();
 
@@ -263,6 +274,7 @@ void StateEstimationNode::on_reset(
   logic_->reset();
   reported_resets_ = 0;
   reported_rejects_ = 0;
+  reported_slip_events_ = 0;
   response->success = true;
   response->message = "estimate reset to the odom origin";
   RCLCPP_INFO(get_logger(), "Reset to the odom origin");
@@ -282,14 +294,17 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   in.imu_mount_known = imu_mount_known_;
   in.new_numerical_reset = s.numerical_resets > reported_resets_;
   in.new_rejected_sample = s.rejected_measurements > reported_rejects_;
+  in.new_slip_event = s.slip_events > reported_slip_events_;
   reported_resets_ = s.numerical_resets;
   reported_rejects_ = s.rejected_measurements;
+  reported_slip_events_ = s.slip_events;
 
   const HealthReport report = summarize_health(in);
   stat.summary(report.level, report.message);
   stat.add("imu_age", s.imu_age);
   stat.add("wheel_odom_age", s.wheel_age);
   stat.add("slip_detected", s.slip_detected);
+  stat.add("slip_events", s.slip_events);
   stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);

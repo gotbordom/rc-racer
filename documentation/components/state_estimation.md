@@ -61,13 +61,16 @@ It does **not**:
 | `inputs.wheel_odom.scale_stddev` | double | 0.01 (TBD) | Stddev of the encoder's constant scale error k (calibration, tyre wear). Added to the published covariance, never estimated (§4) |
 | `robot.max_steering_angle` | double | 0.52 | rad, used by the bicycle model's slide check |
 | `robot.rear_axle_offset` | double | 0.192 | m, rear axle forward to `base_footprint` (midway between the axles, Conventions §2.1). The bicycle model integrates the rear axle, which has no sideways motion, then moves to `base_footprint` |
-| `process_noise.accel` | double | 0.05 (TBD) | (m/s²)²/s, unmodelled forward acceleration while IMU acceleration is the input |
+| `process_noise.accel` | double | 0.003 (TBD) | (m/s²)²/s, unmodelled forward acceleration while IMU acceleration is the input (~0.05 m/s of speed σ after 1 s on the IMU alone) |
 | `process_noise.accel_no_imu` | double | 4.0 (TBD) | (m/s²)²/s, forward acceleration when the IMU is stale |
 | `process_noise.yaw_accel` | double | 1.0 (TBD) | (rad/s²)²/s, unmodelled change in yaw rate |
 | `process_noise.distance` | double | 1e-3 (TBD) | m²/m, along-track position noise per metre driven: wheel scale error that varies (tyre scrub in turns, 0.3-0.8 % in sim) |
-| `slip.threshold` | double | 0.3 (TBD) | m/s. Wheel speed minus predicted speed beyond this, plus 3σ of the predicted speed, counts as slip |
+| `slip.threshold` | double | 0.3 (TBD) | m/s. Wheel speed minus predicted speed beyond this, plus 3σ of the predicted speed, counts as slip (in both the one-step and the windowed check) |
+| `slip.window` | double | 0.5 (TBD) | s. Window for the second slip check, and twice the time the wheel must agree before slip ends |
+| `slip.max_duration` | double | 2.0 (TBD) | s. Longest IMU-only stretch while slipping; then the wheel is trusted again |
+| `stationary.speed` / `.yaw_rate` / `.accel` | double | 0.05 / 0.05 / 0.3 (TBD) | Wheel below m/s, with the IMU's yaw rate (rad/s) and forward acceleration (m/s²) below these: stopped, ends slip at once |
 | `slip.yaw_rate_margin` | double | 0.2 (TBD) | rad/s. Yaw rate beyond what the motion model allows at this speed that counts as a slide |
-| `slip.variance_scale` | double | 1e4 (TBD) | Factor on the wheel-speed variance while slipping |
+| `slip.variance_scale` | double | 1e6 (TBD) | Factor on the wheel-speed variance while slipping: in effect, the wheel is not fused (1e4 still dragged the estimate after a crash) |
 | `initial_covariance.pose` / `.speed` / `.yaw_rate` | double | 1e-6 / 1.0 / 0.1 | Covariance diagonal after start and `~/reset` |
 
 ## 4. Behaviour
@@ -80,7 +83,12 @@ It does **not**:
 - **IMU lever arm:** in a turn an accelerometer ahead of the rear axle feels −ω²·l on its forward axis (l = `robot.rear_axle_offset` + the IMU's forward offset from TF); it is added back, as it is not acceleration.
 - **Wheel encoder scale error:** one encoder on the rear axle reads (1 + k)·v with k unknown. With no absolute reference, k is **unobservable**: estimating it, even as a Schmidt consider state, let the EKF invent information and drift the speed and position (3.2 m after 100 m of unbiased inputs). So k is not in the state. Its constant part is added to the **published** covariance only: dead reckoning scales the path about the `odom` origin by (1 + k), so position gains `scale_stddev`²·p·pᵀ and speed `scale_stddev`²·v². Its varying part is `process_noise.distance`. `localization` can estimate k later from landmark fixes.
 - **Motion model:** the bicycle model integrates the **rear axle**, the only point of an Ackermann car that does not move sideways, and moves the result to `base_footprint`; on a turn `base_footprint` slides sideways at ω × `robot.rear_axle_offset`. Leaving this out cost 0.37-0.45 m over the L2 loop. Integration follows the measured yaw rate even beyond the steering limit, so a slide cannot corrupt the heading. The model's limit (`RobotFrame::constrain`) is used only to detect slides.
-- **Slip:** two checks. (1) *Wheel slip*: wheel speed and the IMU-predicted speed disagree by more than `slip.threshold` plus 3σ of the predicted speed. (2) *Slide*: the yaw rate exceeds what the motion model allows at the current speed by `slip.yaw_rate_margin`; this never triggers for the unicycle. While either is detected, the wheel-odometry variance is multiplied by `slip.variance_scale`, until they agree again.
+- **Slip** (REQ-GNC-005). Slip starts on any of three checks:
+  1. *Step*: the wheel speed and the speed predicted one step ahead disagree by more than `slip.threshold` + 3σ.
+  2. *Window*: the wheel speed and the estimate from `slip.window` ago, carried forward by the IMU alone, disagree by more than `slip.threshold` + 3σ of that reference. This catches slip that builds up over several steps, such as wheels spinning down for 0.5 s after a crash. The step check misses it, because every update re-anchors the estimate to the wheel. When this check fires, the speed is reset to the IMU reference.
+  3. *Slide*: the yaw rate exceeds what the motion model allows at the current speed by `slip.yaw_rate_margin`. This never triggers for the unicycle.
+
+  While slipping, the wheel variance is multiplied by `slip.variance_scale`, so the speed is IMU-only. **Safety nets**, so the filter never stays on the IMU alone: slip also ends at once when the car is clearly stopped (wheel below `stationary.speed`, IMU quiet), or after `slip.max_duration`. Then the speed is re-anchored to the wheel and the window history is cleared. These matter because an IMU can miss or saturate on a crash impulse (DEV-07 in sim): the IMU-only speed once stayed at 2.5 m/s with the car stopped against the bench. Slip ends (hysteresis) when the wheel has agreed with that speed within `slip.threshold`/2 + 3σ, with no slide, for `slip.window`/2 without a break. A wheel still spinning down can't end it on the way. Found by a manual sim test, turbo into the bench: the estimate had read 2 m/s with the car stopped.
 - **Degraded modes:**
 
 | Missing input | Behaviour | Diagnostics |
@@ -99,7 +107,7 @@ It does **not**:
 | --- | --- |
 | STALE | Inactive, or an input has not arrived yet (ICD-SNS-GNC §5) |
 | ERROR | Stale IMU; no TF from `base_footprint` to the IMU frame; numerical reset since the last report |
-| WARN | Stale wheel odometry; slip detected; rejected samples since the last report |
+| WARN | Stale wheel odometry; slip now or **any slip since the last report** (latched: `slip_events` counts them, so a short slip between two 1 Hz reports is still reported); rejected samples since the last report |
 | OK | Otherwise |
 
 Key values: `imu_age`, `wheel_odom_age`, `slip_detected`, `covariance_trace`, `numerical_resets`, `rejected_measurements`, `motion_model`, `fusion_method`. A WARN on position covariance above a limit waits for that limit (TBD, from the L2 test).

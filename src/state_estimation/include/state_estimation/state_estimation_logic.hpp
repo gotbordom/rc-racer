@@ -11,6 +11,7 @@
 #ifndef STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 #define STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 
+#include <deque>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -62,8 +63,9 @@ struct StateEstimationConfig
   double wheel_odom_timeout{0.2};  ///< s, inputs.wheel_odom.timeout
 
   /// Unmodelled forward acceleration, (m/s^2)^2/s, while IMU acceleration
-  /// is used as input (covers tilt and bias errors). TBD.
-  double accel_noise_density{0.05};
+  /// is used as input (covers tilt and bias errors): ~0.05 m/s of speed
+  /// sigma after 1 s of IMU only. TBD.
+  double accel_noise_density{0.003};
   /// Forward acceleration, (m/s^2)^2/s, when the IMU is stale and nothing
   /// is known about acceleration. TBD.
   double accel_noise_density_no_imu{4.0};
@@ -81,13 +83,32 @@ struct StateEstimationConfig
   double distance_noise_density{1.0e-3};
 
   /// Wheel speed minus predicted speed (m/s) beyond which the wheels are
-  /// slipping, on top of 3 sigma of the predicted speed. TBD.
+  /// slipping, on top of 3 sigma of the predicted speed. Also the limit for
+  /// the windowed check against slip_window seconds of IMU. TBD.
   double slip_threshold{0.3};
+  /// s. The wheel speed is also compared with the estimate from this long
+  /// ago plus the IMU acceleration since. The one-step check alone misses
+  /// slip that builds up over several steps (e.g. wheels spinning down for
+  /// 0.5 s after a crash), because each update re-anchors the estimate to
+  /// the slipping wheel. TBD.
+  double slip_window{0.5};
+  /// s. Longest IMU-only stretch while slipping. IMU-only speed drifts, and
+  /// a crash impulse can be too short for a 100 Hz IMU (or saturate it), so
+  /// after this the wheel is trusted again. TBD.
+  double slip_max_duration{2.0};
+  /// Stationary: wheel below this (m/s) with a quiet IMU (yaw rate below
+  /// stationary_yaw_rate, forward acceleration below stationary_accel).
+  /// Ends slip at once: e.g. pinned against an obstacle after a crash. TBD.
+  double stationary_speed{0.05};
+  double stationary_yaw_rate{0.05};   ///< rad/s
+  double stationary_accel{0.3};       ///< m/s^2
   /// Yaw rate (rad/s) beyond what the motion model allows at this speed
   /// that counts as a slide. Never triggers for the unicycle. TBD.
   double slip_yaw_rate_margin{0.2};
-  /// Factor on wheel-speed variance while slipping. TBD.
-  double slip_variance_scale{1.0e4};
+  /// Factor on wheel-speed variance while slipping: large enough that the
+  /// slipping wheel has no real pull (1e4 still dragged the estimate after
+  /// a crash). TBD.
+  double slip_variance_scale{1.0e6};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -110,6 +131,9 @@ struct StateEstimationStatus
   bool wheel_stale{true};
 
   bool slip_detected{false};
+  /// Times slip started. Counted so a health report can warn about slip
+  /// that came and went between reports.
+  int slip_events{0};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -150,6 +174,16 @@ public:
   const StateEstimationConfig & config() const {return config_;}
 
 private:
+  /// Estimate from slip_window ago plus the IMU acceleration since, and the
+  /// variance it had then; unset until a full window of fresh IMU exists.
+  struct ReferenceSpeed
+  {
+    double speed;
+    double variance;
+  };
+  std::optional<ReferenceSpeed> imu_reference_speed() const;
+
+
   /// Restore the last good estimate if the current one is not finite.
   void guard_numerics();
   void update_staleness();
@@ -164,6 +198,23 @@ private:
 
   double forward_accel_{0.0};           ///< gravity removed, from the last IMU sample
   double forward_accel_variance_{0.0};
+
+  /// For the windowed slip check: per predict step, the time, the speed
+  /// estimate and the running integral of the acceleration input.
+  struct SpeedSample
+  {
+    double time;
+    double speed;
+    double speed_variance;
+    double accel_integral;
+  };
+  std::deque<SpeedSample> speed_history_;
+  /// While slipping: since when the wheel has agreed again (hysteresis).
+  std::optional<double> agreeing_since_;
+  double slip_since_{0.0};       ///< elapsed_ when the current slip started
+  double last_yaw_rate_{0.0};    ///< rad/s, from the last IMU sample
+  double elapsed_{0.0};
+  double accel_integral_{0.0};
 };
 
 }  // namespace state_estimation

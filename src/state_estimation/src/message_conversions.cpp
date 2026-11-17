@@ -188,7 +188,9 @@ HealthReport summarize_health(const HealthInputs & inputs)
   if (inputs.new_numerical_reset) {
     append(report, DiagnosticStatus::ERROR, "estimate was not finite; restored last good");
   }
-  if (s.slip_detected) {
+  // Latched: slip that started and ended between two 1 Hz reports is still
+  // reported once.
+  if (s.slip_detected || inputs.new_slip_event) {
     append(report, DiagnosticStatus::WARN, "wheel slip detected");
   }
   if (inputs.new_rejected_sample) {

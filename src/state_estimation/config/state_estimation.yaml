@@ -23,14 +23,20 @@ state_estimation:
         timeout: 0.2                # s, ICD-SNS-GNC §5
         scale_stddev: 0.01          # encoder scale error (calibration, tyre wear) (TBD)
     process_noise:
-      accel: 0.05                   # (m/s^2)^2/s with IMU acceleration as input (TBD)
+      accel: 0.003                  # (m/s^2)^2/s with IMU acceleration as input (TBD)
       accel_no_imu: 4.0             # (m/s^2)^2/s when the IMU is stale (TBD)
       yaw_accel: 1.0                # (rad/s^2)^2/s (TBD)
       distance: 1.0e-3              # m^2/m along-track, varying wheel scale / scrub (TBD)
     slip:
       threshold: 0.3                # m/s, on top of 3 sigma of predicted speed (TBD)
       yaw_rate_margin: 0.2          # rad/s beyond the steering limit (TBD)
-      variance_scale: 10000.0       # wheel variance factor while slipping (TBD)
+      window: 0.5                   # s, wheel vs estimate-then + IMU since (TBD)
+      max_duration: 2.0             # s, longest IMU-only stretch while slipping (TBD)
+    stationary:                     # wheel ~0 and IMU quiet: stopped, ends slip (TBD)
+      speed: 0.05                   # m/s
+      yaw_rate: 0.05                # rad/s
+      accel: 0.3                    # m/s^2
+      variance_scale: 1000000.0       # wheel variance factor while slipping (TBD)
     initial_covariance:
       pose: 1.0e-6
       speed: 1.0

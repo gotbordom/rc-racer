@@ -90,6 +90,7 @@ private:
   // Counters at the previous diagnostics report
   int reported_resets_{0};
   int reported_rejects_{0};
+  int reported_slip_events_{0};
 };
 
 }  // namespace state_estimation

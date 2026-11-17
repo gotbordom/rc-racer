@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <stdexcept>
@@ -340,10 +341,143 @@ TEST(StateEstimationLogicTest, WheelSpinIsDetectedAndDistrusted)
     kWheelStd * kWheelStd * logic.config().slip_variance_scale);
   EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.2);
 
-  // Grip again: wheels agree with the estimate, slip clears.
-  cycle(logic, imu_sample(0.0), 1.0);
+  // Grip again: once the wheels have agreed with the estimate for a full
+  // slip window (hysteresis), slip clears.
+  for (int i = 0; i < 30; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
   EXPECT_FALSE(logic.status().slip_detected);
   EXPECT_DOUBLE_EQ(logic.status().wheel_variance_used, kWheelStd * kWheelStd);
+}
+
+TEST(StateEstimationLogicTest, CrashSpinDownIsDetected)
+{
+  // Regression from a manual sim test (turbo into a bench): the body stops
+  // in 0.4 s (IMU -7.5 m/s^2) while the wheels spin down over 1 s. The
+  // one-step check missed it (-7.5 m/s^2 is 0.15 m/s per step, and each
+  // update re-anchored the estimate to the wheels), so the estimate read
+  // 2 m/s with the car stopped. The windowed check must catch it.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {  // 2 s steady at 3 m/s
+    cycle(logic, imu_sample(0.0), 3.0);
+  }
+  ASSERT_FALSE(logic.status().slip_detected);
+
+  bool detected = false;
+  for (int i = 1; i <= 50; ++i) {  // the crash, 1 s
+    const double t = i * kDt;
+    const double body_accel = t <= 0.4 ? -7.5 : 0.0;
+    const double wheel = std::max(0.0, 3.0 * (1.0 - t / 1.0));
+    cycle(logic, imu_sample(0.0, body_accel), wheel);
+    detected = detected || logic.status().slip_detected;
+    if (t >= 0.5) {
+      // Body stopped at 0.4 s; the wheels still read 1.5 m/s at 0.5 s.
+      EXPECT_LT(logic.state().mean(kSpeed), 0.5) << "t " << t;
+    }
+  }
+  EXPECT_TRUE(detected);
+  EXPECT_EQ(logic.status().slip_events, 1);
+
+  for (int i = 0; i < 50; ++i) {  // stopped, wheels agree again
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  EXPECT_FALSE(logic.status().slip_detected);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 0.0, 0.05);
+  EXPECT_EQ(logic.status().slip_events, 1);
+}
+
+TEST(StateEstimationLogicTest, CrashTheImuMissedEndsWhenStopped)
+{
+  // Regression from a manual sim test: the IMU did not register the crash
+  // (a short impulse a 100 Hz IMU can miss, or a saturated one), so the
+  // IMU-only speed stayed at 2.5 m/s while the car sat stopped against the
+  // bench, and slip never ended. Wheel ~0 with a quiet IMU means stopped.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 3.0);
+  }
+  for (int i = 1; i <= 25; ++i) {  // wheel 3 -> 0 in 0.5 s, IMU sees nothing
+    cycle(logic, imu_sample(0.0), std::max(0.0, 3.0 * (1.0 - i * kDt / 0.5)));
+  }
+  EXPECT_EQ(logic.status().slip_events, 1);
+  for (int i = 0; i < 10; ++i) {  // 0.2 s stopped
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  EXPECT_FALSE(logic.status().slip_detected);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 0.0, 0.05);
+  for (int i = 0; i < 100; ++i) {  // and it stays settled: no new events
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  EXPECT_EQ(logic.status().slip_events, 1);
+}
+
+TEST(StateEstimationLogicTest, ImuOnlyStretchIsBounded)
+{
+  // Wheels spinning at 3 m/s with a quiet IMU (stuck, or an IMU that missed
+  // a launch): after slip.max_duration the wheel is trusted again, rather
+  // than running on IMU-only speed for ever.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  cycle(logic, imu_sample(0.0), 3.0);
+  ASSERT_TRUE(logic.status().slip_detected);
+  int cycles = 1;
+  while (logic.status().slip_detected && cycles < 500) {
+    cycle(logic, imu_sample(0.0), 3.0);
+    ++cycles;
+  }
+  EXPECT_NEAR(cycles * kDt, logic.config().slip_max_duration, 0.1);
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 3.0);
+  }
+  EXPECT_FALSE(logic.status().slip_detected);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 3.0, 0.05);
+  EXPECT_EQ(logic.status().slip_events, 1);
+}
+
+TEST(StateEstimationLogicTest, HardAccelerationIsNotSlip)
+{
+  // 0 -> 3 m/s in 1 s and a hard stop, with wheels and IMU agreeing (sim
+  // noise): the windowed check must not fire.
+  std::mt19937 rng(7);
+  std::normal_distribution<double> accel_noise(0.0, kAccelStd);
+  std::normal_distribution<double> wheel_noise(0.0, kWheelStd);
+  StateEstimationLogic logic;
+  double v = 0.0;
+  for (int i = 0; i < 200; ++i) {
+    const double t = i * kDt;
+    const double a = t < 1.0 ? 3.0 : (t < 2.0 ? 0.0 : (t < 2.5 ? -6.0 : 0.0));
+    v = std::max(0.0, v + a * kDt);
+    cycle(logic, imu_sample(0.0, a + accel_noise(rng)), v + wheel_noise(rng));
+    ASSERT_FALSE(logic.status().slip_detected) << "t " << t;
+  }
+  EXPECT_EQ(logic.status().slip_events, 0);
+}
+
+TEST(StateEstimationLogicTest, NoWindowedSlipCheckWithoutImu)
+{
+  // With the IMU stale the acceleration input is 0, so the IMU reference
+  // would call any real speed change slip. The windowed check is skipped.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {  // 0 -> 2 m/s in 2 s, wheels only
+    logic.predict(kDt);
+    logic.update_wheel_speed(wheel_sample(0.02 * i));
+    ASSERT_FALSE(logic.status().slip_detected) << "cycle " << i;
+  }
+}
+
+TEST(StateEstimationLogicTest, SwitchedOnWhileMovingIsNotSlip)
+{
+  // Started at 1 m/s with no acceleration: neither the one-step nor the
+  // windowed check may call the first second of readings slip (the initial
+  // speed guess is uncertain), and the estimate must settle on the wheels.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+    ASSERT_FALSE(logic.status().slip_detected) << "cycle " << i;
+  }
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.02);
 }
 
 TEST(StateEstimationLogicTest, FirstWheelReadingWhileMovingIsNotSlip)

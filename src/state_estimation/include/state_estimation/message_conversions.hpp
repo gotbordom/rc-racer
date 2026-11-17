@@ -68,6 +68,7 @@ struct HealthInputs
   bool imu_mount_known{true};      ///< TF to the IMU frame was found
   bool new_numerical_reset{false};  ///< since the previous report
   bool new_rejected_sample{false};  ///< since the previous report
+  bool new_slip_event{false};       ///< since the previous report
 };
 
 struct HealthReport

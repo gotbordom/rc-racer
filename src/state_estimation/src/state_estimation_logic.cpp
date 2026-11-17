@@ -45,6 +45,11 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   }
   require_positive(config.slip_threshold, "slip.threshold");
   require_positive(config.slip_yaw_rate_margin, "slip.yaw_rate_margin");
+  require_positive(config.slip_window, "slip.window");
+  require_positive(config.slip_max_duration, "slip.max_duration");
+  require_positive(config.stationary_speed, "stationary.speed");
+  require_positive(config.stationary_yaw_rate, "stationary.yaw_rate");
+  require_positive(config.stationary_accel, "stationary.accel");
   require_positive(config.initial_pose_variance, "initial_covariance.pose");
   require_positive(config.initial_speed_variance, "initial_covariance.speed");
   require_positive(config.initial_yaw_rate_variance, "initial_covariance.yaw_rate");
@@ -78,6 +83,8 @@ void StateEstimationLogic::reset()
   status_.imu_age = imu_age;
   status_.wheel_age = wheel_age;
   update_staleness();
+  speed_history_.clear();
+  agreeing_since_.reset();
 }
 
 void StateEstimationLogic::predict(double dt)
@@ -105,7 +112,31 @@ void StateEstimationLogic::predict(double dt)
 
   fusion_->predict(state_, *frame_, inputs, dt);
   guard_numerics();
+
+  elapsed_ += dt;
+  accel_integral_ += inputs.forward_accel * dt;
+  speed_history_.push_back(
+    {elapsed_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed), accel_integral_});
+  // Keep the newest sample that is at least slip_window old at the front.
+  while (speed_history_.size() > 1 && speed_history_[1].time <= elapsed_ - config_.slip_window) {
+    speed_history_.pop_front();
+  }
 }
+
+std::optional<StateEstimationLogic::ReferenceSpeed>
+StateEstimationLogic::imu_reference_speed() const
+{
+  // Needs a full window of fresh IMU: without it the acceleration input is
+  // 0 and the reference would call every real speed change slip.
+  if (speed_history_.empty() || status_.imu_stale ||
+    elapsed_ - speed_history_.front().time < config_.slip_window)
+  {
+    return std::nullopt;
+  }
+  const SpeedSample & then = speed_history_.front();
+  return ReferenceSpeed{then.speed + (accel_integral_ - then.accel_integral), then.speed_variance};
+}
+
 
 void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
 {
@@ -134,6 +165,7 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
   forward_accel_variance_ = imu.forward_specific_force_variance +
     (imu.pitch ? gravity_gain * gravity_gain * imu.pitch_variance : 0.0);
 
+  last_yaw_rate_ = imu.yaw_rate;
   fusion_->update(state_, kYawRate, imu.yaw_rate, imu.yaw_rate_variance);
   guard_numerics();
 }
@@ -155,7 +187,16 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   // The 3-sigma term stops a filter that is still unsure of its speed (e.g.
   // started while moving) from calling a correct wheel reading slip.
   const double speed_sigma = std::sqrt(state_.covariance(kSpeed, kSpeed));
-  const bool wheel_slip = std::abs(residual) > config_.slip_threshold + 3.0 * speed_sigma;
+  const bool step_slip = std::abs(residual) > config_.slip_threshold + 3.0 * speed_sigma;
+  // Slip that builds up over several steps: compare with the estimate from
+  // slip_window ago carried forward by the IMU alone.
+  // Its 3-sigma term matters at start-up: switched on while moving, the
+  // reference speed is the uncertain initial guess.
+  const std::optional<ReferenceSpeed> reference = imu_reference_speed();
+  const bool window_slip = reference &&
+    std::abs(wheel.speed - reference->speed) >
+    config_.slip_threshold + 3.0 * std::sqrt(reference->variance);
+  const bool wheel_slip = step_slip || window_slip;
 
   // Check the yaw rate against the best speed available: the wheels unless
   // they are slipping.
@@ -164,12 +205,54 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   const double feasible_yaw_rate = frame_->constrain(velocity).angular;
   const bool sliding =
     std::abs(velocity.angular - feasible_yaw_rate) > config_.slip_yaw_rate_margin;
-  status_.slip_detected = wheel_slip || sliding;
+  bool slipping = wheel_slip || sliding;
+  if (status_.slip_detected) {
+    // Hysteresis: while slipping the wheel is not fused, so the speed is
+    // IMU-only. The wheel is trusted again only after agreeing with it
+    // (half the threshold plus 3 sigma) for half a slip window without a
+    // break, so a wheel still spinning down cannot end the slip on its way.
+    const bool agrees =
+      std::abs(residual) < 0.5 * config_.slip_threshold + 3.0 * speed_sigma && !sliding;
+    if (!agrees) {
+      agreeing_since_.reset();
+    } else if (!agreeing_since_) {
+      agreeing_since_ = elapsed_;
+    }
+    const bool agreed = agreeing_since_ && elapsed_ - *agreeing_since_ >= 0.5 * config_.slip_window;
+    // Safety nets, so the filter never stays on the IMU alone: the car is
+    // clearly stopped (wheel ~0, IMU quiet), or the IMU-only stretch has
+    // lasted too long. Then trust the wheel again from now on: re-anchor the
+    // speed to it and forget the IMU-only history, or the windowed check
+    // would fire again on the stale reference.
+    const bool stationary = std::abs(wheel.speed) < config_.stationary_speed &&
+      !status_.imu_stale && std::abs(last_yaw_rate_) < config_.stationary_yaw_rate &&
+      std::abs(forward_accel_) < config_.stationary_accel;
+    const bool too_long = elapsed_ - slip_since_ >= config_.slip_max_duration;
+    if (stationary || too_long) {
+      state_.mean(kSpeed) = wheel.speed;
+      speed_history_.clear();
+    }
+    slipping = !(agreed || stationary || too_long);
+  } else if (slipping) {
+    ++status_.slip_events;
+    slip_since_ = elapsed_;
+    agreeing_since_.reset();
+    if (window_slip) {
+      // The estimate followed the slipping wheel over the window; the IMU
+      // reference is the better speed. Start the IMU-only stretch from it.
+      state_.mean(kSpeed) = reference->speed;
+    }
+  }
+  status_.slip_detected = slipping;
 
   status_.wheel_variance_used =
     status_.slip_detected ? wheel.variance * config_.slip_variance_scale : wheel.variance;
   fusion_->update(state_, kSpeed, wheel.speed, status_.wheel_variance_used);
   guard_numerics();
+  if (!speed_history_.empty()) {  // after the update
+    speed_history_.back().speed = state_.mean(kSpeed);
+    speed_history_.back().speed_variance = state_.covariance(kSpeed, kSpeed);
+  }
 }
 
 RobotState StateEstimationLogic::estimate() const

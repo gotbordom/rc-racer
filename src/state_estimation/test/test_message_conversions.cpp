@@ -283,6 +283,11 @@ TEST(HealthTest, SlipRejectsAndNumericalResets)
   EXPECT_EQ(summarize_health(in).level, DiagnosticStatus::WARN);
 
   in = healthy();
+  in.new_slip_event = true;  // slip came and went since the last report
+  EXPECT_EQ(summarize_health(in).level, DiagnosticStatus::WARN);
+  EXPECT_NE(summarize_health(in).message.find("slip"), std::string::npos);
+
+  in = healthy();
   in.new_rejected_sample = true;
   EXPECT_EQ(summarize_health(in).level, DiagnosticStatus::WARN);
 

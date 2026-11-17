@@ -40,6 +40,8 @@ RUN apt-get update && apt-get install -y \
     # ROS 2 transform library
     ros-humble-tf2 \
     ros-humble-tf2-ros \
+    # Health reporting on /diagnostics (Architecture Conventions §8)
+    ros-humble-diagnostic-updater \
     # Computer vision
     ros-humble-cv-bridge \
     ros-humble-image-transport \

@@ -35,6 +35,9 @@ struct ImuMeasurement
   /// to remove gravity. Unset when the IMU gives no orientation; the ground
   /// is then assumed level.
   std::optional<double> pitch;
+  /// rad^2. Pitch noise becomes acceleration noise (g * cos(pitch))^2 *
+  /// pitch_variance through gravity removal (0.02 rad is ~0.2 m/s^2).
+  double pitch_variance{0.0};
 };
 
 /// Forward speed from wheel odometry (ICD-SNS-GNC: only twist.linear.x).

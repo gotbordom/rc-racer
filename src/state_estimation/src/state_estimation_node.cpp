@@ -47,6 +47,7 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("fusion.method", d.fusion_method);
   declare_parameter("robot.wheelbase", d.robot.wheelbase);
   declare_parameter("robot.max_steering_angle", d.robot.max_steering_angle);
+  declare_parameter("robot.rear_axle_offset", d.robot.rear_axle_offset);
   declare_parameter("inputs.imu.timeout", d.imu_timeout);
   declare_parameter("inputs.wheel_odom.timeout", d.wheel_odom_timeout);
   declare_parameter("process_noise.accel", d.accel_noise_density);
@@ -67,6 +68,7 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.fusion_method = get_parameter("fusion.method").as_string();
   c.robot.wheelbase = get_parameter("robot.wheelbase").as_double();
   c.robot.max_steering_angle = get_parameter("robot.max_steering_angle").as_double();
+  c.robot.rear_axle_offset = get_parameter("robot.rear_axle_offset").as_double();
   c.imu_timeout = get_parameter("inputs.imu.timeout").as_double();
   c.wheel_odom_timeout = get_parameter("inputs.wheel_odom.timeout").as_double();
   c.accel_noise_density = get_parameter("process_noise.accel").as_double();

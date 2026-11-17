@@ -71,8 +71,8 @@ TEST(StateEstimationLogicTest, TracksConstantTurnFromNoisySensors)
 
   const double v = 2.0;
   const double omega = 0.3;
-  StateEstimationLogic logic;
-  const TwoWheelDifferentialSteering truth_model;
+  StateEstimationLogic logic;  // bicycle, the car's defaults
+  const AckermannSteering truth_model(0.384, 0.52, 0.192);
   Pose2D truth;
 
   for (int i = 0; i < 500; ++i) {
@@ -133,6 +133,37 @@ TEST(StateEstimationLogicTest, GravityRemovedUsingPitch)
     logic.predict(kDt);
   }
   EXPECT_NEAR(logic.state().mean(kSpeed), 0.0, 1e-9);
+}
+
+TEST(StateEstimationLogicTest, PitchNoiseWidensSpeedUncertainty)
+{
+  // Removing gravity with a noisy pitch adds (g * sigma_pitch)^2 to the
+  // acceleration variance: 0.02 rad is ~0.2 m/s^2, four times the
+  // accelerometer's own noise.
+  StateEstimationLogic with_pitch;
+  StateEstimationLogic without_pitch;
+  ImuMeasurement imu = imu_sample(0.0);
+  imu.pitch = 0.0;
+  imu.pitch_variance = 0.02 * 0.02;
+  for (int i = 0; i < 50; ++i) {
+    with_pitch.update_imu(imu);
+    with_pitch.predict(kDt);
+    without_pitch.update_imu(imu_sample(0.0));
+    without_pitch.predict(kDt);
+  }
+  EXPECT_GT(
+    with_pitch.state().covariance(kSpeed, kSpeed),
+    without_pitch.state().covariance(kSpeed, kSpeed));
+}
+
+TEST(StateEstimationLogicTest, RejectsBadPitchVariance)
+{
+  StateEstimationLogic logic;
+  ImuMeasurement imu = imu_sample(0.0);
+  imu.pitch = 0.0;
+  imu.pitch_variance = NAN;
+  logic.update_imu(imu);
+  EXPECT_EQ(logic.status().rejected_measurements, 1);
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ state_estimation:
     robot:
       wheelbase: 0.384              # m, rc_racer.urdf.xacro
       max_steering_angle: 0.52      # rad, wheels.urdf.xacro
+      rear_axle_offset: 0.192       # m, rear axle forward to base_footprint (midway)
     inputs:
       imu:
         timeout: 0.1                # s, ICD-SNS-GNC §5

@@ -48,18 +48,26 @@ Pose2D RobotFrame::get_next_pose_estimate(
   const double v = inputs.linear;
   const double w = inputs.angular;
   const double turn = w * dt;
+  const double a = rear_axle_offset();
 
+  // Integrate the point that does not slide sideways (the rear axle), then
+  // move forward to base_footprint: on a turn base_footprint slides
+  // sideways at omega * a, which the arc alone would miss.
   Pose2D next;
+  const Pose2D axle{pose.x - a * std::cos(pose.yaw), pose.y - a * std::sin(pose.yaw), pose.yaw};
   if (std::abs(turn) < kStraightLineTurn) {
-    const double mid_yaw = pose.yaw + 0.5 * turn;
-    next.x = pose.x + v * dt * std::cos(mid_yaw);
-    next.y = pose.y + v * dt * std::sin(mid_yaw);
+    const double mid_yaw = axle.yaw + 0.5 * turn;
+    next.x = axle.x + v * dt * std::cos(mid_yaw);
+    next.y = axle.y + v * dt * std::sin(mid_yaw);
   } else {
     const double r = v / w;
-    next.x = pose.x + r * (std::sin(pose.yaw + turn) - std::sin(pose.yaw));
-    next.y = pose.y + r * (std::cos(pose.yaw) - std::cos(pose.yaw + turn));
+    next.x = axle.x + r * (std::sin(axle.yaw + turn) - std::sin(axle.yaw));
+    next.y = axle.y + r * (std::cos(axle.yaw) - std::cos(axle.yaw + turn));
   }
-  next.yaw = normalize_angle(pose.yaw + turn);
+  const double yaw_end = pose.yaw + turn;
+  next.x += a * std::cos(yaw_end);
+  next.y += a * std::sin(yaw_end);
+  next.yaw = normalize_angle(yaw_end);
   return next;
 }
 
@@ -98,14 +106,30 @@ PoseJacobians RobotFrame::jacobians(
     j.wrt_inputs(0, 1) = v * (dt * c1 / w - (s1 - s0) / (w * w));
     j.wrt_inputs(1, 1) = v * (dt * s1 / w - (c0 - c1) / (w * w));
   }
+
+  // Offset terms from moving to the rear axle and back (see above).
+  const double a = rear_axle_offset();
+  const double s0 = std::sin(pose.yaw);
+  const double c0 = std::cos(pose.yaw);
+  const double s1 = std::sin(pose.yaw + turn);
+  const double c1 = std::cos(pose.yaw + turn);
+  j.wrt_pose(0, 2) += a * (s0 - s1);
+  j.wrt_pose(1, 2) += a * (c1 - c0);
+  j.wrt_inputs(0, 1) -= a * s1 * dt;
+  j.wrt_inputs(1, 1) += a * c1 * dt;
   return j;
 }
 
-AckermannSteering::AckermannSteering(double wheelbase, double max_steering_angle)
-: wheelbase_(wheelbase), max_steering_angle_(max_steering_angle)
+AckermannSteering::AckermannSteering(
+  double wheelbase, double max_steering_angle, double rear_axle_offset)
+: wheelbase_(wheelbase), max_steering_angle_(max_steering_angle),
+  rear_axle_offset_(rear_axle_offset)
 {
   if (!(wheelbase > 0.0) || !std::isfinite(wheelbase)) {
     throw std::invalid_argument("wheelbase must be positive");
+  }
+  if (!(rear_axle_offset >= 0.0 && rear_axle_offset <= wheelbase)) {
+    throw std::invalid_argument("rear_axle_offset must be in [0, wheelbase]");
   }
   if (!(max_steering_angle > 0.0 && max_steering_angle < M_PI_2)) {
     throw std::invalid_argument("max_steering_angle must be in (0, pi/2)");
@@ -142,7 +166,8 @@ std::unique_ptr<RobotFrame> make_robot_frame(
   const std::string & motion_model, const RobotFrameParams & params)
 {
   if (motion_model == "bicycle") {
-    return std::make_unique<AckermannSteering>(params.wheelbase, params.max_steering_angle);
+    return std::make_unique<AckermannSteering>(
+      params.wheelbase, params.max_steering_angle, params.rear_axle_offset);
   }
   if (motion_model == "unicycle") {
     return std::make_unique<TwoWheelDifferentialSteering>();

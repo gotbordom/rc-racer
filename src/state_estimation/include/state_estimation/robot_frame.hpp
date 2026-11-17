@@ -45,6 +45,9 @@ struct RobotFrameParams
 {
   double wheelbase{0.384};           ///< m, bicycle model only
   double max_steering_angle{0.52};   ///< rad, bicycle model only
+  /// m, bicycle model only: rear axle to base_footprint, forward. 0.192 =
+  /// midway between the axles (Conventions §2.1).
+  double rear_axle_offset{0.192};
 };
 
 /// Wrap an angle to [-pi, pi).
@@ -79,7 +82,14 @@ public:
   /// @throws std::invalid_argument if dt is negative or not finite.
   PoseJacobians jacobians(
     const Pose2D & pose, const VelocityInputs & inputs, double dt) const;
+
+  /// Distance (m) from the point that never slides sideways (the rear axle
+  /// of a car) forward to base_footprint. The pose is base_footprint;
+  /// integration runs at that point and is moved back, so on a turn
+  /// base_footprint slides sideways at omega times this distance.
+  virtual double rear_axle_offset() const {return 0.0;}
 };
+
 
 /// Ackermann car as a kinematic bicycle (the Traxxas Slash).
 ///
@@ -88,12 +98,13 @@ public:
 class AckermannSteering : public RobotFrame
 {
 public:
-  /// @throws std::invalid_argument unless wheelbase > 0 and
-  ///         0 < max_steering_angle < pi/2.
-  AckermannSteering(double wheelbase, double max_steering_angle);
+  /// @throws std::invalid_argument unless wheelbase > 0,
+  ///         0 < max_steering_angle < pi/2 and 0 <= rear_axle_offset <= wheelbase.
+  AckermannSteering(double wheelbase, double max_steering_angle, double rear_axle_offset);
 
   std::string name() const override {return "bicycle";}
   VelocityInputs constrain(const VelocityInputs & inputs) const override;
+  double rear_axle_offset() const override {return rear_axle_offset_;}
 
   /// Yaw rate for a front-wheel steering angle, after clamping the angle.
   double yaw_rate_from_steering(double speed, double steering_angle) const;
@@ -108,6 +119,7 @@ public:
 private:
   double wheelbase_;
   double max_steering_angle_;
+  double rear_axle_offset_;
 };
 
 /// Two-wheel differential drive as a unicycle: v and omega are independent,

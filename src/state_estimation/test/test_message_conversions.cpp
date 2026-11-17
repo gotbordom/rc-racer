@@ -56,6 +56,7 @@ TEST(ImuConversionTest, AlignedMountPassesThrough)
   EXPECT_NEAR(imu.forward_specific_force_variance, 4e-3, kTol);
   ASSERT_TRUE(imu.pitch.has_value());
   EXPECT_NEAR(*imu.pitch, 0.0, kTol);
+  EXPECT_NEAR(imu.pitch_variance, 0.01, kTol);
 }
 
 TEST(ImuConversionTest, RotatedMountIsUndone)

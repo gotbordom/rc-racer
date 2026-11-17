@@ -104,7 +104,9 @@ void StateEstimationLogic::predict(double dt)
 
 void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
 {
-  const bool pitch_ok = !imu.pitch || std::isfinite(*imu.pitch);
+  const bool pitch_ok =
+    !imu.pitch || (std::isfinite(*imu.pitch) && std::isfinite(imu.pitch_variance) &&
+    imu.pitch_variance >= 0.0);
   if (!valid_sample(imu.yaw_rate, imu.yaw_rate_variance) ||
     !valid_sample(imu.forward_specific_force, imu.forward_specific_force_variance) || !pitch_ok)
   {
@@ -116,8 +118,11 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
 
   // Specific force on a body pitched nose-down by theta at rest reads
   // -g * sin(theta) on x; add it back to get the real acceleration.
-  forward_accel_ = imu.forward_specific_force + kGravity * std::sin(imu.pitch.value_or(0.0));
-  forward_accel_variance_ = imu.forward_specific_force_variance;
+  const double pitch = imu.pitch.value_or(0.0);
+  forward_accel_ = imu.forward_specific_force + kGravity * std::sin(pitch);
+  const double gravity_gain = kGravity * std::cos(pitch);  // d(accel) / d(pitch)
+  forward_accel_variance_ = imu.forward_specific_force_variance +
+    (imu.pitch ? gravity_gain * gravity_gain * imu.pitch_variance : 0.0);
 
   fusion_->update(state_, kYawRate, imu.yaw_rate, imu.yaw_rate_variance);
   guard_numerics();

@@ -20,9 +20,19 @@ namespace
 
 constexpr double kWheelbase = 0.384;      // m, rc_racer.urdf.xacro
 constexpr double kMaxSteering = 0.52;     // rad, wheels.urdf.xacro
+constexpr double kRearAxleOffset = kWheelbase / 2.0;  // base_footprint midway
 constexpr double kTol = 1e-9;
 
-AckermannSteering make_car() {return AckermannSteering(kWheelbase, kMaxSteering);}
+AckermannSteering make_car()
+{
+  return AckermannSteering(kWheelbase, kMaxSteering, kRearAxleOffset);
+}
+
+// Turn centre and radius of base_footprint for a car starting at the origin
+// facing +x and turning left with rear-axle radius r: the rear axle (at
+// x = -a) circles (-a, r), and base_footprint, a ahead of it, circles the
+// same centre at sqrt(r^2 + a^2).
+double footprint_radius(double r) {return std::hypot(r, kRearAxleOffset);}
 
 // Drive n steps of dt and return the final pose.
 Pose2D drive(const RobotFrame & frame, Pose2D pose, VelocityInputs in, double dt, int n)
@@ -125,7 +135,8 @@ TEST(RobotFrameTest, BicycleTurnRadiusMatchesSteeringAngle)
   Pose2D pose;
   for (int i = 0; i < 200; ++i) {
     pose = car.get_next_pose_estimate(pose, {1.0, omega}, 0.02);
-    EXPECT_NEAR(std::hypot(pose.x, pose.y - radius), radius, 1e-9);
+    EXPECT_NEAR(
+      std::hypot(pose.x + kRearAxleOffset, pose.y - radius), footprint_radius(radius), 1e-9);
   }
 }
 
@@ -171,8 +182,34 @@ TEST(AckermannSteeringTest, ClampedTurnUsesMinimumRadius)
   Pose2D pose;
   for (int i = 0; i < 100; ++i) {
     pose = car.get_next_pose_estimate(pose, in, 0.02);
-    EXPECT_NEAR(std::hypot(pose.x, pose.y - min_radius), min_radius, 1e-9);
+    EXPECT_NEAR(
+      std::hypot(pose.x + kRearAxleOffset, pose.y - min_radius), footprint_radius(min_radius),
+      1e-9);
   }
+}
+
+TEST(AckermannSteeringTest, FootprintSlidesSidewaysOnATurn)
+{
+  // Only the rear axle has no sideways motion. After a half turn the
+  // footprint is displaced by a * (heading_end - heading_start) = (-2a, 0)
+  // relative to where the rear axle's arc alone would put it.
+  const AckermannSteering car = make_car();
+  const TwoWheelDifferentialSteering axle_only;
+  const double omega = 0.5;
+  const double dt = M_PI / omega / 100.0;
+  const Pose2D car_end = drive(car, {}, {1.0, omega}, dt, 100);
+  const Pose2D axle_end = drive(axle_only, {}, {1.0, omega}, dt, 100);
+  EXPECT_NEAR(car_end.x - axle_end.x, -2.0 * kRearAxleOffset, 1e-9);
+  EXPECT_NEAR(car_end.y - axle_end.y, 0.0, 1e-9);
+  EXPECT_NEAR(car_end.yaw, axle_end.yaw, 1e-9);
+}
+
+TEST(AckermannSteeringTest, OffsetDoesNotMatterOnAStraightLine)
+{
+  const AckermannSteering car = make_car();
+  const Pose2D end = car.get_next_pose_estimate({1.0, 2.0, 0.3}, {2.0, 0.0}, 1.0);
+  EXPECT_NEAR(end.x, 1.0 + 2.0 * std::cos(0.3), kTol);
+  EXPECT_NEAR(end.y, 2.0 + 2.0 * std::sin(0.3), kTol);
 }
 
 TEST(AckermannSteeringTest, CannotTurnInPlace)
@@ -283,6 +320,8 @@ TEST(RobotFrameJacobianTest, BicycleInsideSteeringLimit)
 {
   const AckermannSteering car = make_car();
   expect_jacobians_match(car, {0.0, 0.0, -0.4}, {2.0, 1.0}, 0.02);
+  expect_jacobians_match(car, {1.0, -2.0, 2.5}, {1.0, 0.0}, 0.02);  // straight branch
+  expect_jacobians_match(car, {1.0, -2.0, 2.5}, {-0.7, 3.0}, 0.3);  // beyond the limit
 }
 
 TEST(RobotFrameJacobianTest, YawRowIsSimple)
@@ -308,11 +347,13 @@ TEST(RobotFrameTest, RejectsInvalidDt)
 
 TEST(AckermannSteeringTest, RejectsInvalidParameters)
 {
-  EXPECT_THROW(AckermannSteering(0.0, 0.5), std::invalid_argument);
-  EXPECT_THROW(AckermannSteering(-0.3, 0.5), std::invalid_argument);
-  EXPECT_THROW(AckermannSteering(NAN, 0.5), std::invalid_argument);
-  EXPECT_THROW(AckermannSteering(0.384, 0.0), std::invalid_argument);
-  EXPECT_THROW(AckermannSteering(0.384, M_PI_2), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(0.0, 0.5, 0.0), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(-0.3, 0.5, 0.0), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(NAN, 0.5, 0.0), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(0.384, 0.0, 0.0), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(0.384, M_PI_2, 0.0), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(0.384, 0.5, -0.1), std::invalid_argument);
+  EXPECT_THROW(AckermannSteering(0.384, 0.5, 0.5), std::invalid_argument);
 }
 
 TEST(MakeRobotFrameTest, BuildsModelByName)
@@ -334,6 +375,9 @@ TEST(MakeRobotFrameTest, DefaultsMatchTheCar)
   const RobotFrameParams params;
   EXPECT_DOUBLE_EQ(params.wheelbase, kWheelbase);
   EXPECT_DOUBLE_EQ(params.max_steering_angle, kMaxSteering);
+  EXPECT_DOUBLE_EQ(params.rear_axle_offset, kRearAxleOffset);
+  EXPECT_DOUBLE_EQ(make_robot_frame("bicycle", params)->rear_axle_offset(), kRearAxleOffset);
+  EXPECT_DOUBLE_EQ(make_robot_frame("unicycle", params)->rear_axle_offset(), 0.0);
 }
 
 TEST(MakeRobotFrameTest, RejectsUnknownModel)

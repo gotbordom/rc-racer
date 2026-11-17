@@ -59,6 +59,7 @@ It does **not**:
 | `inputs.imu.timeout` | double | 0.1 | s |
 | `inputs.wheel_odom.timeout` | double | 0.2 | s |
 | `robot.max_steering_angle` | double | 0.52 | rad, used by the bicycle model's slide check |
+| `robot.rear_axle_offset` | double | 0.192 | m, rear axle forward to `base_footprint` (midway between the axles, Conventions §2.1). The bicycle model integrates the rear axle, which has no sideways motion, then moves to `base_footprint` |
 | `process_noise.accel` | double | 0.05 (TBD) | (m/s²)²/s, unmodelled forward acceleration while IMU acceleration is the input |
 | `process_noise.accel_no_imu` | double | 4.0 (TBD) | (m/s²)²/s, forward acceleration when the IMU is stale |
 | `process_noise.yaw_accel` | double | 1.0 (TBD) | (rad/s²)²/s, unmodelled change in yaw rate |
@@ -74,7 +75,7 @@ It does **not**:
 - **Predict** on a fixed-rate timer using the motion model, with the latest IMU forward acceleration as the speed input (not reused once the IMU is stale).
 - **Update** on each `/imu` (yaw rate) and `/wheel/odom` (forward speed).
 - **IMU orientation:** only roll and pitch are used, to remove gravity from the forward acceleration. The absolute yaw is world-frame data and is ignored (ISSUE-002).
-- **Motion model:** integration follows the measured yaw rate even beyond the steering limit, so a slide cannot corrupt the heading. The model's limit (`RobotFrame::constrain`) is used only to detect slides.
+- **Motion model:** the bicycle model integrates the **rear axle**, the only point of an Ackermann car that does not move sideways, and moves the result to `base_footprint`; on a turn `base_footprint` slides sideways at ω × `robot.rear_axle_offset`. Leaving this out cost 0.37-0.45 m over the L2 loop. Integration follows the measured yaw rate even beyond the steering limit, so a slide cannot corrupt the heading. The model's limit (`RobotFrame::constrain`) is used only to detect slides.
 - **Slip:** two checks. (1) *Wheel slip*: wheel speed and the IMU-predicted speed disagree by more than `slip.threshold` plus 3σ of the predicted speed. (2) *Slide*: the yaw rate exceeds what the motion model allows at the current speed by `slip.yaw_rate_margin`; this never triggers for the unicycle. While either is detected, the wheel-odometry variance is multiplied by `slip.variance_scale`, until they agree again.
 - **Degraded modes:**
 

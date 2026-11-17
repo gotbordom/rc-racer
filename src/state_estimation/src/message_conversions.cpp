@@ -97,6 +97,9 @@ ImuMeasurement to_imu_measurement(
     const Eigen::Matrix3d r_ref_base =
       (q_ref_imu.normalized() * base_from_imu.normalized().conjugate()).toRotationMatrix();
     imu.pitch = std::asin(std::clamp(-r_ref_base(2, 0), -1.0, 1.0));
+    // Orientation covariance is about the IMU's axes; rotate it to the car's
+    // and take the pitch (y) axis.
+    imu.pitch_variance = rotated_variance(msg.orientation_covariance, r, 1);
   }
   return imu;
 }

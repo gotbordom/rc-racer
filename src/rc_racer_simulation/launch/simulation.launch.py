@@ -18,7 +18,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
+from launch.substitutions import (
+    Command, LaunchConfiguration, PathJoinSubstitution, PythonExpression)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -49,6 +50,9 @@ def generate_launch_description():
 
     # Paths
     world_path = PathJoinSubstitution([pkg_rc_racer_sim, 'worlds', LaunchConfiguration('world')])
+    # Gazebo names its topics after the world, which is named after its file
+    world_name = PythonExpression(["'", LaunchConfiguration('world'), "'.rsplit('.', 1)[0]"])
+    dynamic_pose_topic = ['/world/', world_name, '/dynamic_pose/info']
     urdf_path = os.path.join(pkg_rc_racer_sim, 'urdf', 'rc_racer.urdf.xacro')
 
     # Process URDF with xacro
@@ -123,12 +127,15 @@ def generate_launch_description():
             '/wheel/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
             # Joint states (wheel spin + steering angle) for robot_state_publisher
             '/joint_states@sensor_msgs/msg/JointState[ignition.msgs.Model',
+            # Ground-truth pose of every moving model, in the world frame (= map)
+            dynamic_pose_topic + ['@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V'],
         ],
         # Gazebo sensors are noise-free: publish them as truth for the sensor adapter
         remappings=[
             ('/imu', '/sim/truth/imu'),
             ('/navsat', '/sim/truth/navsat'),
             ('/wheel/odom', '/sim/truth/wheel_odom'),
+            (dynamic_pose_topic, '/sim/truth/poses'),
         ],
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]

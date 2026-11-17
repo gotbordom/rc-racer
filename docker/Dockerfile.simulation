@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y \
     # TF
     ros-humble-tf2 \
     ros-humble-tf2-ros \
+    # Health reporting (state_estimation, built by the system tests)
+    ros-humble-diagnostic-updater \
     # Build tools
     python3-colcon-common-extensions \
     # Utilities

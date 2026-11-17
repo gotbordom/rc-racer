@@ -126,7 +126,7 @@ Written just in time, before each subsystem's components are designed.
 | REQ-GNC-001 | GNC shall estimate the vehicle's pose (position, heading) and velocity in the `odom` frame at ≥ 50 Hz. | REQ-SYS-001 | T | VEH.GNC.SE |
 | REQ-GNC-002 | The `odom`-frame estimate shall be continuous (no jumps) and drift by no more than **TBD-003** % of distance travelled. | REQ-SYS-001, REQ-SYS-005 | T | VEH.GNC.SE |
 | REQ-GNC-003 | GNC shall estimate the vehicle's WGS84 position to within **TBD-004** m (95%) for navigation between waypoints. | REQ-SYS-001, REQ-SYS-002 | T | VEH.GNC.LOC |
-| REQ-GNC-004 | GNC shall keep estimating pose through GNSS outages of up to **TBD-005** s. | REQ-SYS-001 | T | VEH.GNC.SE, VEH.GNC.LOC |
+| REQ-GNC-004 | GNC shall keep estimating pose through GNSS outages of up to **TBD-005** s. *(Deferred: no GNSS receiver, ISSUE-001)* | REQ-SYS-001 | T | VEH.GNC.SE, VEH.GNC.LOC |
 | REQ-GNC-005 | GNC shall detect wheel slip and reduce its trust in wheel odometry while slip is detected. | RM "Take into account slip" | T | VEH.GNC.SE |
 | REQ-GNC-006 | GNC shall report the covariance of every estimate it publishes. | Architecture Conventions | T, I | VEH.GNC |
 | REQ-GNC-007 | GNC shall select its motion model (bicycle or unicycle) from configuration, without code changes. | REQ-SYS-041 | T | VEH.GNC.SE |
@@ -137,8 +137,8 @@ Written just in time, before each subsystem's components are designed.
 
 | ID | Issue | Affects | Proposed resolution |
 | --- | --- | --- | --- |
-| ISSUE-001 | The overview diagram marks the **GPS node as "Work Not Planned"** and `Rc-Car-Design.md` lists no GPS hardware, but every RoboMagellan waypoint is given in GPS coordinates (REQ-SYS-001, -020) and the state estimation design subscribes to GPS. | REQ-SYS-001, REQ-GNC-003, VEH.SNS.GPS | Plan a GNSS receiver and `gps_driver`; update the overview diagram. |
-| ISSUE-002 | Whether `state_estimation` fuses GPS (as in its class diagram) or only IMU + wheel odometry, leaving GPS to `localization` (the REP-105 `odom`/`map` split). | VEH.GNC.SE, VEH.GNC.LOC | See [state_estimation](state_estimation) open items. |
+| ~~ISSUE-001~~ | The overview diagram marks the **GPS node as "Work Not Planned"** and `Rc-Car-Design.md` lists no GPS hardware, but every RoboMagellan waypoint is given in GPS coordinates (REQ-SYS-001, -020) and the state estimation design subscribes to GPS. | REQ-SYS-001, REQ-GNC-003, VEH.SNS.GPS | ✅ **Decided 2026-11-16 (owner).** Waypoints **are** handled as WGS84 coordinates: `localization` converts them to the `map` frame, anchored at the known course start point (REQ-SYS-020). There is **no onboard GNSS receiver** for now: global position comes from dead reckoning from the start point, corrected by camera sightings of landmarks with known positions (waypoint cones, arena edges, other surveyed features). A GNSS receiver and `gps_driver` are a **future improvement** (VEH.SNS.GPS). REQ-GNC-004 is deferred until then. |
+| ~~ISSUE-002~~ | Whether `state_estimation` fuses GPS (as in its class diagram) or only IMU + wheel odometry, leaving GPS to `localization` (the REP-105 `odom`/`map` split). | VEH.GNC.SE, VEH.GNC.LOC | ✅ **Decided 2026-11-16 (owner): option (b).** `state_estimation` estimates the vehicle's own motion (IMU + wheel odometry, `odom` frame) and never uses world-frame data. `localization` owns the vehicle's pose in the `map` / WGS84 frame and is where GNSS would be fused. See [state_estimation](state_estimation) Open Item 1. |
 
 ## 6. TBD / TBR Register
 
@@ -147,6 +147,6 @@ Written just in time, before each subsystem's components are designed.
 | TBD-001 | REQ-SYS-004 | Maximum allowed cone displacement on contact | Check event judging practice; test cone push in sim |
 | TBD-002 | REQ-SYS-005 | Maximum total path length | Estimate from past course maps (e.g. 2-3x straight-line) |
 | TBD-003 | REQ-GNC-002 | Allowed odometry drift | Analysis of encoder + IMU error; tune in sim |
-| TBD-004 | REQ-GNC-003 | Required global position accuracy | Depends on GNSS receiver (ISSUE-001) and final cone approach by camera |
-| TBD-005 | REQ-GNC-004 | Longest GNSS outage to ride through | Survey of course (trees, buildings) |
+| TBD-004 | REQ-GNC-003 | Required global position accuracy | No GNSS (ISSUE-001): set from dead-reckoning drift (TBD-003) over the course length (REQ-SYS-005) and the camera's landmark detection range |
+| TBD-005 | REQ-GNC-004 | Longest GNSS outage to ride through | Deferred with REQ-GNC-004 until a GNSS receiver is added (ISSUE-001) |
 | TBR-001 | REQ-SYS-034 | Battery energy margin (proposed 30%) | Battery stress test |

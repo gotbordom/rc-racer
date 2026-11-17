@@ -62,7 +62,7 @@ No transform is published for wheel odometry ([Conventions §2](Architecture-Con
 | --- | --- | --- |
 | `/imu` | 0.1 s | ERROR; estimate quality drops sharply; Safety decides whether to stop |
 | `/navsat` | 2.0 s, or `STATUS_NO_FIX` | WARN; continue on IMU + wheel odometry (REQ-GNC-004) |
-| `/wheel/odom` | 0.2 s | WARN; continue on IMU (+ GNSS) with growing velocity uncertainty |
+| `/wheel/odom` | 0.2 s | WARN; continue on IMU with growing velocity uncertainty |
 
 No startup order is assumed: GNC waits for each input and reports STALE until it arrives.
 

@@ -30,7 +30,7 @@ This document outlines the software development plan for the RC Racer autonomous
 src/
 ├── rc_racer_simulation/ # Gazebo world, robot model, sensors (Phase 1)
 ├── state_estimation/    # Sensor fusion and state tracking
-├── localization/        # GPS + IMU + camera positioning
+├── localization/        # map/WGS84 pose: dead reckoning + camera landmark fixes (GNSS later)
 ├── mapping/             # 2D weighted obstacle/terrain mapping
 ├── object_detection/    # Orange cone and obstacle detection
 ├── planning_control/    # Path planning and navigation

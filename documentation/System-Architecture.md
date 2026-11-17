@@ -34,7 +34,7 @@ Codes are used in requirement allocations, ICD names and test names.
 
 ## 2. Product Breakdown Tree
 
-Status: ✅ exists · 🟨 stub package (structure only, no code) · ⏳ planned · ▫️ placeholder
+Status: ✅ exists · 🟨 stub package (structure only, no code) · ⏳ planned · ▫️ placeholder / future improvement
 
 ```
 L0  RC Racer System
@@ -42,7 +42,7 @@ L0  RC Racer System
 ├── L1  VEH  Vehicle Segment                   ("flight software" - Jetson Nano, on the car)
 │   ├── L2  SNS  Sensing                       turns hardware into ROS data
 │   │   ├── L3  IMU  imu_driver                ⏳ Phase 5   Adafruit BNO085
-│   │   ├── L3  GPS  gps_driver                ⏳ Phase 5   GNSS receiver (see ISSUE-001)
+│   │   ├── L3  GPS  gps_driver                ▫️ future    GNSS receiver, not in HW list (ISSUE-001)
 │   │   ├── L3  CAM  camera_driver             ⏳ Phase 5   stereo cameras
 │   │   └── L3  ENC  encoder_driver            ⏳ Phase 5   drive motor encoder (128 PPR)
 │   ├── L2  PER  Perception

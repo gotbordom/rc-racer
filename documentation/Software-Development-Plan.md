@@ -865,8 +865,8 @@ ros2 launch gazebo_ros gazebo.launch.py
 **Driving the car by hand** (`rc_racer_bringup/launch/sim_manual.launch.py`): Gazebo GUI, `state_estimation` on sim time, and RViz with the TF tree, the car, and `/odom` with its 3σ covariance ellipse.
 
 ```bash
-xhost +local:docker
-docker compose -f docker/docker-compose.yml up sim-manual
+make sim                     # = xhost +local:docker && docker compose ... up sim-manual
+make sim WORLD=empty_course.world
 ```
 
 | Control | Xbox controller (`config/xbox_teleop.yaml`) |
@@ -876,12 +876,19 @@ docker compose -f docker/docker-compose.yml up sim-manual
 | Turn | Right stick left / right (1 rad/s full stick; the drive clamps it at the steering limit) |
 | Turbo | Hold **RB** as well (3 m/s, 1.5 rad/s) |
 
-The controller is read by `joy`'s `game_controller_node`, which uses SDL's standard gamepad layout, so any Xbox pad works the same over USB or Bluetooth. Plug it in before or after starting; check it with `ros2 topic echo /joy`. Without a controller, use the keyboard in a second terminal:
+The controller is read by `joy`'s `game_controller_node`, which uses SDL's standard gamepad layout, so any pad SDL knows works the same over USB or Bluetooth. Plug it in before or after starting. With `make sim` running, in a second terminal:
 
-```bash
-docker exec -it rc-racer-sim-manual bash -c \
-  "source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard"
-```
+| Command | Does |
+| --- | --- |
+| `make joy-echo` | Show what the pad sends on `/joy` |
+| `make joy-devices` | List the pads SDL sees, with their GUIDs |
+| `make joy-sdl-map` | Pad drives wrongly (scrambled buttons, a stick that can't centre)? SDL has no mapping for it. This measures the raw pad and prints a mapping line for `SDL_GAMECONTROLLERCONFIG` in the `sim-manual` service. The Xbox One Elite 2 over Bluetooth is already there |
+| `make joy-calibrate` | Quick fix: detect the buttons and axes and apply them to teleop until it restarts |
+| `make keyboard` | Drive with the keyboard instead |
+| `make se-reset`, `se-deactivate`, `se-activate`, `se-diagnostics` | `state_estimation` service, lifecycle and health |
+| `make shell` | Shell in the sim container with ROS sourced |
+
+`make` on its own lists every target.
 
 ### 5.7 Container Architecture
 
@@ -1056,6 +1063,8 @@ Migrate to microservices when:
 ---
 
 ## 6. Build & Test Commands
+
+From the host, the `Makefile` wraps the Docker commands: `make test` (all unit and component tests plus linters, in the dev image; `PKG=<package>` for one package), `make test-system` (the Gazebo system tests; `FILTER=<regex>`), and `make images` (rebuild the images after a Dockerfile change). Run `make` to list them all.
 
 > **Note:** All commands below are run **inside the Docker container** unless otherwise specified.
 

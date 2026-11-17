@@ -10,9 +10,10 @@
 # Check with: ros2 topic echo /joy
 #
 # A pad SDL has no mapping for gets a guessed layout (scrambled buttons, a
-# stick read as a half-range trigger). Add its mapping to
-# SDL_GAMECONTROLLERCONFIG in the sim-manual compose service; the Xbox One
-# Elite 2 over Bluetooth (firmware 0x0523) is already there.
+# stick read as a half-range trigger). `make joy-sdl-map` measures the pad
+# and prints its mapping; add it to SDL_GAMECONTROLLERCONFIG in the
+# sim-manual compose service. The Xbox One Elite 2 over Bluetooth (firmware
+# 0x0523) is already there.
 #
 # Hold LB to drive (deadman): let go and a single zero command stops the car.
 # Left stick up/down = speed, right stick left/right = turn, RB = turbo.

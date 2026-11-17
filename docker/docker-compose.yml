@@ -100,15 +100,17 @@ services:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - ROS_LOCALHOST_ONLY=0
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # SDL's udev lookup finds no controllers in the container (the host's
+      # udev data lacks the joystick tag here); scan /dev/input instead
+      - SDL_JOYSTICK_DISABLE_UDEV=1
     volumes:
       # Live sources for the packages under test (built on start)
       - ../src:/ros2_ws/src:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/dri:/dev/dri
       # Game controller: bind /dev/input (not --device) so a pad plugged in
-      # after start still appears; udev lets SDL identify it
+      # after start still appears
       - /dev/input:/dev/input
-      - /run/udev:/run/udev:ro
     device_cgroup_rules:
       - "c 13:* rmw"  # input devices (js*, event*)
     networks:

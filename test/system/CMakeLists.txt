@@ -69,6 +69,19 @@ if(BUILD_TESTING)
   )
 
   # ---------------------------------------------------------------------------
+  # Subsystem Test (L2): state_estimation in simulation
+  # ---------------------------------------------------------------------------
+  # Validates: /odom vs ground truth over a ~100 m loop of the practice course
+  #            (rate, continuity, drift TBD-003, covariance honesty, health)
+  # Timeout: Long (Gazebo startup + ~100 s of simulated driving)
+  #
+  add_launch_test(
+    launch/test_gnc_state_estimation_sim.launch.py
+    TARGET test_gnc_state_estimation_sim
+    TIMEOUT 900
+  )
+
+  # ---------------------------------------------------------------------------
   # System Test: Full Stack Simulation
   # ---------------------------------------------------------------------------
   # Validates: Complete system in Gazebo with realistic sensors

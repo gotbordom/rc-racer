@@ -146,7 +146,7 @@ Written just in time, before each subsystem's components are designed.
 | --- | --- | --- | --- |
 | TBD-001 | REQ-SYS-004 | Maximum allowed cone displacement on contact | Check event judging practice; test cone push in sim |
 | TBD-002 | REQ-SYS-005 | Maximum total path length | Estimate from past course maps (e.g. 2-3x straight-line) |
-| TBD-003 | REQ-GNC-002 | Allowed odometry drift | Analysis of encoder + IMU error; tune in sim |
+| TBD-003 | REQ-GNC-002 | Allowed odometry drift. **Proposed: 2 % (TBR)** | Sim L2 test measures 0.13 % over ~100 m; 2 % leaves margin for real tyres, terrain and encoder calibration (1 % scale error assumed). Confirm on hardware (Phase 5) |
 | TBD-004 | REQ-GNC-003 | Required global position accuracy | No GNSS (ISSUE-001): set from dead-reckoning drift (TBD-003) over the course length (REQ-SYS-005) and the camera's landmark detection range |
 | TBD-005 | REQ-GNC-004 | Longest GNSS outage to ride through | Deferred with REQ-GNC-004 until a GNSS receiver is added (ISSUE-001) |
 | TBR-001 | REQ-SYS-034 | Battery energy margin (proposed 30%) | Battery stress test |

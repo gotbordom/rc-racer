@@ -34,14 +34,15 @@ jobs:
         with:
           path: src/rc-racer
 
-      # Simulation packages need Gazebo Fortress (not in the lean CI image);
-      # they are built and tested by the nightly workflow instead
+      # Simulation packages need Gazebo Fortress (not in the lean CI image),
+      # and rc_racer_bringup depends on them; they are built and tested by the
+      # nightly workflow instead
       - name: Build
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
           colcon build --symlink-install \
-            --packages-skip rc_racer_simulation rc_racer_system_tests \
+            --packages-skip rc_racer_simulation rc_racer_system_tests rc_racer_bringup \
             --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         working-directory: .
 
@@ -51,7 +52,7 @@ jobs:
           source /opt/ros/humble/setup.bash
           source install/setup.bash
           # Skip slow system tests for fast CI feedback
-          colcon test --packages-skip rc_racer_simulation rc_racer_system_tests
+          colcon test --packages-skip rc_racer_simulation rc_racer_system_tests rc_racer_bringup
           colcon test-result --verbose
         working-directory: .
 

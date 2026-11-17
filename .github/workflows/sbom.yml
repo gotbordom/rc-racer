@@ -76,7 +76,7 @@ jobs:
             -w /ros2_ws \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             bash -c "source /opt/ros/humble/setup.bash && colcon build \
-              --packages-skip rc_racer_simulation rc_racer_system_tests \
+              --packages-skip rc_racer_simulation rc_racer_system_tests rc_racer_bringup \
               --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 
       - name: Generate C++ build SBOM

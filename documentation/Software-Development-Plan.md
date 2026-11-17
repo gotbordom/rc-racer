@@ -24,6 +24,23 @@ This document outlines the software development plan for the RC Racer autonomous
 | **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems (first: fix sim steering lag, §4.2) |
 | **Phase 5: Integration** | ⏳ Planned     | Full system integration, hardware deployment |
 
+**Features.** Each phase is split into numbered features, `<phase>.<feature>`. A feature is one component or one piece of work that is developed on one branch and merged when it is done. Features are numbered in the order they are planned. Add new ones at the end of their phase, and never renumber a feature once a branch uses its number.
+
+| Feature | Name | Element | Status |
+| --- | --- | --- | --- |
+| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models done; filter logic, ROS node and L2 sim test to do |
+| 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
+| 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
+| 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
+| 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |
+| 4.1 | `sim-steering-lag` | TST (DEV-04) | ⏳ Planned |
+| 4.2 | `motor-controller` | VEH.ACT.MC | ⏳ Planned |
+| 4.3 | `safety` | VEH.FDR.SAF | ⏳ Planned |
+
+Phase 1 was completed before features were numbered. Its branch, `feature/simulation`, keeps its name. Phase 5 features will be numbered when Phase 5 is planned in detail.
+
+**Branch names.** A feature branch is named `feature/<phase>.<feature>-<name>`, using the number and name from the table, e.g. `feature/2.1-state-estimation`. Merged feature branches are kept for later review.
+
 ### 1.2 Package Structure
 
 ```

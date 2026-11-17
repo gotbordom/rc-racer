@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+#
+# state_estimation parameters (VEH.GNC.SE spec §3.4). Moves to
+# rc_racer_bringup/config/ when that package exists (Conventions §7).
+# Values marked TBD are first guesses, tuned in the L2 sim test.
+
+state_estimation:
+  ros__parameters:
+    publish_rate: 50.0              # Hz, predict + publish
+    publish_tf: true                # odom -> base_footprint (only publisher)
+    motion_model: bicycle           # bicycle (Ackermann) | unicycle (differential)
+    fusion:
+      method: ekf                   # ekf (ukf, complementary planned)
+    robot:
+      wheelbase: 0.384              # m, rc_racer.urdf.xacro
+      max_steering_angle: 0.52      # rad, wheels.urdf.xacro
+    inputs:
+      imu:
+        timeout: 0.1                # s, ICD-SNS-GNC §5
+      wheel_odom:
+        timeout: 0.2                # s, ICD-SNS-GNC §5
+    process_noise:
+      accel: 0.05                   # (m/s^2)^2/s with IMU acceleration as input (TBD)
+      accel_no_imu: 4.0             # (m/s^2)^2/s when the IMU is stale (TBD)
+      yaw_accel: 1.0                # (rad/s^2)^2/s (TBD)
+    slip:
+      threshold: 0.3                # m/s, on top of 3 sigma of predicted speed (TBD)
+      yaw_rate_margin: 0.2          # rad/s beyond the steering limit (TBD)
+      variance_scale: 10000.0       # wheel variance factor while slipping (TBD)
+    initial_covariance:
+      pose: 1.0e-6
+      speed: 1.0
+      yaw_rate: 0.1

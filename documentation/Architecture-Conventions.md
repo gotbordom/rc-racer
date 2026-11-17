@@ -66,7 +66,7 @@ Offsets are for reference: the **URDF (`rc_racer_simulation/urdf/`) is the sourc
 | Edge (parent → child) | Owner (only publisher) | Topic | Rate | Status |
 | --- | --- | --- | --- | --- |
 | `map` → `odom` | VEH.GNC.LOC `localization` | `/tf` | ≥ 10 Hz | ⏳ planned |
-| `odom` → `base_footprint` | VEH.GNC.SE `state_estimation` | `/tf` | 50 Hz | ⏳ next |
+| `odom` → `base_footprint` | VEH.GNC.SE `state_estimation` | `/tf` | 50 Hz | ✅ (single publisher checked by `test_state_estimation_node`) |
 | `base_footprint` → `base_link` | `robot_state_publisher` (URDF) | `/tf_static` | static | ✅ |
 | `base_link` → `imu_link`, `gps_link`, `camera_link` | `robot_state_publisher` (URDF) | `/tf_static` | static | ✅ |
 | `camera_link` → `camera_optical_link` | `robot_state_publisher` (URDF) | `/tf_static` | static | ✅ |

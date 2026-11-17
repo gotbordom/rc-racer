@@ -38,7 +38,7 @@ It does **not**:
 | --- | --- | --- | --- | --- |
 | `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance |
 | TF `odom` → `base_footprint` | `tf2_msgs/msg/TFMessage` | [Conventions §2](Architecture-Conventions) | 50 Hz | Only publisher of this edge |
-| `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it |
+| `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it. **Not implemented yet**; the slip flag is in `/diagnostics` |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | [Conventions §8](Architecture-Conventions) | 1 Hz | See §5 |
 
 ### 3.3 Actions / Services offered
@@ -88,7 +88,18 @@ It does **not**:
 
 ## 5. Health
 
-`/diagnostics` status `state_estimation`: OK when both inputs are fresh. WARN on stale wheel odometry, slip detected, or position covariance above TBD. ERROR on stale IMU or numerical reset. Key values: input ages, slip flag, covariance trace.
+`/diagnostics` status `state_estimation` (1 Hz, `diagnostic_updater`). The worst condition sets the level, ranked ERROR > STALE > WARN > OK, and every condition is listed in the message:
+
+| Level | When |
+| --- | --- |
+| STALE | Inactive, or an input has not arrived yet (ICD-SNS-GNC §5) |
+| ERROR | Stale IMU; no TF from `base_footprint` to the IMU frame; numerical reset since the last report |
+| WARN | Stale wheel odometry; slip detected; rejected samples since the last report |
+| OK | Otherwise |
+
+Key values: `imu_age`, `wheel_odom_age`, `slip_detected`, `covariance_trace`, `numerical_resets`, `rejected_measurements`, `motion_model`, `fusion_method`. A WARN on position covariance above a limit waits for that limit (TBD, from the L2 test).
+
+**IMU mount:** the node looks up `base_footprint` → IMU frame once from TF (static, from the URDF) and rotates rates, specific force and covariances into `base_footprint`. Until the transform exists, IMU samples are ignored.
 
 ## 6. Internal Design
 

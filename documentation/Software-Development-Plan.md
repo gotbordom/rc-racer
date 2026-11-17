@@ -28,7 +28,7 @@ This document outlines the software development plan for the RC Racer autonomous
 
 | Feature | Name | Element | Status |
 | --- | --- | --- | --- |
-| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models done; filter logic, ROS node and L2 sim test to do |
+| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models, filter logic and ROS node done; L2 sim test to do |
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |

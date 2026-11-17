@@ -36,7 +36,7 @@ It does **not**:
 
 | Name | Type | ICD | Rate | Notes |
 | --- | --- | --- | --- | --- |
-| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance |
+| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance. Pose z, roll, pitch variance is **0**: `base_footprint` is on the ground plane by definition (REP-120), and RViz draws a 2D ellipse only then. Velocities not estimated (lateral, vertical, roll/pitch rates) have variance 1e6 |
 | TF `odom` → `base_footprint` | `tf2_msgs/msg/TFMessage` | [Conventions §2](Architecture-Conventions) | 50 Hz | Only publisher of this edge |
 | `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it. **Not implemented yet**; the slip flag is in `/diagnostics` |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | [Conventions §8](Architecture-Conventions) | 1 Hz | See §5 |

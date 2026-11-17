@@ -27,9 +27,15 @@ namespace state_estimation
 constexpr char kOdomFrame[] = "odom";
 constexpr char kBaseFrame[] = "base_footprint";
 
-/// Variance reported for /odom fields a 2D estimate does not estimate
-/// (z, roll, pitch and their rates, lateral speed), as in ICD-SNS-GNC.
+/// Variance reported for /odom velocities a 2D estimate does not estimate
+/// (lateral and vertical speed, roll and pitch rates), as in ICD-SNS-GNC.
 constexpr double kUnestimatedVariance = 1.0e6;
+
+/// Pose z, roll and pitch of base_footprint in a 2D odom are 0 by the
+/// frame's definition (the car projected onto the ground plane, REP-120),
+/// not unknown, so their variance is exactly 0. This is also how RViz
+/// recognises a 2D pose and draws an x-y ellipse instead of a 3D ellipsoid.
+constexpr double kPlanarPoseVariance = 0.0;
 
 /// IMU message to a measurement in base_footprint.
 ///

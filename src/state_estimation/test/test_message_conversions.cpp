@@ -190,7 +190,9 @@ TEST(OdometryConversionTest, FramesAndValues)
 TEST(OdometryConversionTest, FullCovarianceMapped)
 {
   // REQ-GNC-006: pose (x, y, yaw) and twist (v, omega) blocks, including
-  // cross terms; fields a 2D estimate does not estimate get 1e6.
+  // cross terms. Pose z, roll, pitch are 0 by definition of base_footprint
+  // (variance 0, which RViz needs to draw a 2D ellipse); velocities a 2D
+  // estimate does not estimate get 1e6.
   const RobotState s = make_state();
   const nav_msgs::msg::Odometry odom = to_odometry(s, builtin_interfaces::msg::Time{});
   const auto & pc = odom.pose.covariance;
@@ -203,7 +205,7 @@ TEST(OdometryConversionTest, FullCovarianceMapped)
   EXPECT_DOUBLE_EQ(pc[5 * 6 + 0], p(kYaw, kX));
   EXPECT_DOUBLE_EQ(pc[5 * 6 + 5], p(kYaw, kYaw));
   for (int i : {2, 3, 4}) {
-    EXPECT_DOUBLE_EQ(pc[i * 6 + i], kUnestimatedVariance);
+    EXPECT_DOUBLE_EQ(pc[i * 6 + i], kPlanarPoseVariance);
   }
 
   EXPECT_DOUBLE_EQ(tc[0 * 6 + 0], p(kSpeed, kSpeed));

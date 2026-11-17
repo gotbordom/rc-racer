@@ -134,7 +134,7 @@ nav_msgs::msg::Odometry to_odometry(
     }
   }
   for (int i : {kLinZ, kRotX, kRotY}) {
-    pose_cov[i * 6 + i] = kUnestimatedVariance;
+    pose_cov[i * 6 + i] = kPlanarPoseVariance;
   }
 
   auto & twist_cov = odom.twist.covariance;

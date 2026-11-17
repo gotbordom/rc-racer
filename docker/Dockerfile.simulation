@@ -33,6 +33,10 @@ RUN apt-get update && apt-get install -y \
     ros-humble-tf2-ros \
     # Health reporting (state_estimation, built by the system tests)
     ros-humble-diagnostic-updater \
+    # Manual driving (rc_racer_bringup sim_manual.launch.py)
+    ros-humble-joy \
+    ros-humble-teleop-twist-joy \
+    ros-humble-teleop-twist-keyboard \
     # Build tools
     python3-colcon-common-extensions \
     # Utilities

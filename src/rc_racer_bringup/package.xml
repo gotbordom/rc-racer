@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- SPDX-FileCopyrightText: 2025 Anthony Tracy -->
+<!-- SPDX-License-Identifier: MIT -->
+<package format="3">
+  <name>rc_racer_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch files and configs that bring up the RC Racer stack (Architecture Conventions §7)</description>
+  <maintainer email="todo@todo.com">Anthony Tracy</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rc_racer_simulation</exec_depend>
+  <exec_depend>state_estimation</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>joy</exec_depend>
+  <exec_depend>teleop_twist_joy</exec_depend>
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+
+  <!-- Specific linters instead of ament_lint_common: ament_copyright does not
+       recognise SPDX headers (SDP §1.3) -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_cmake_flake8</test_depend>
+  <test_depend>ament_cmake_pep257</test_depend>
+  <test_depend>ament_cmake_xmllint</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

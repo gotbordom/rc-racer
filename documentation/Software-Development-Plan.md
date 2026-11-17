@@ -862,6 +862,27 @@ docker compose up -d dev
 ros2 launch gazebo_ros gazebo.launch.py
 ```
 
+**Driving the car by hand** (`rc_racer_bringup/launch/sim_manual.launch.py`): Gazebo GUI, `state_estimation` on sim time, and RViz with the TF tree, the car, and `/odom` with its 3σ covariance ellipse.
+
+```bash
+xhost +local:docker
+docker compose -f docker/docker-compose.yml up sim-manual
+```
+
+| Control | Xbox controller (`config/xbox_teleop.yaml`) |
+| --- | --- |
+| Enable (deadman) | Hold **LB**. Releasing it sends one zero command, which stops the car |
+| Speed | Left stick up / down (1 m/s full stick) |
+| Turn | Right stick left / right (1 rad/s full stick; the drive clamps it at the steering limit) |
+| Turbo | Hold **RB** as well (3 m/s, 1.5 rad/s) |
+
+The controller is read by `joy`'s `game_controller_node`, which uses SDL's standard gamepad layout, so any Xbox pad works the same over USB or Bluetooth. Plug it in before or after starting; check it with `ros2 topic echo /joy`. Without a controller, use the keyboard in a second terminal:
+
+```bash
+docker exec -it rc-racer-sim-manual bash -c \
+  "source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard"
+```
+
 ### 5.7 Container Architecture
 
 | Container       | Purpose                 | Base Image                 |

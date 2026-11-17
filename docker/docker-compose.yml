@@ -82,6 +82,47 @@ services:
         world:=${SIM_WORLD:-practice_course.world}
 
   # ===========================================================================
+  # Manual driving: sim GUI + state_estimation + RViz + Xbox controller
+  # ===========================================================================
+  # docker compose -f docker/docker-compose.yml up sim-manual
+  # Hold LB, left stick = speed, right stick = turn, RB = turbo.
+  # Keyboard instead: docker exec -it rc-racer-sim-manual bash -c
+  #   "source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard"
+  sim-manual:
+    image: rc-racer-simulation:latest
+    container_name: rc-racer-sim-manual
+    hostname: rc-racer-simulation
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      # Live sources for the packages under test (built on start)
+      - ../src:/ros2_ws/src:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+      # Game controller: bind /dev/input (not --device) so a pad plugged in
+      # after start still appears; udev lets SDL identify it
+      - /dev/input:/dev/input
+      - /run/udev:/run/udev:ro
+    device_cgroup_rules:
+      - "c 13:* rmw"  # input devices (js*, event*)
+    networks:
+      - ros-network
+    command:
+      - bash
+      - -c
+      - >
+        colcon build --packages-up-to rc_racer_bringup &&
+        source install/setup.bash &&
+        ros2 launch rc_racer_bringup sim_manual.launch.py
+        world:=${SIM_WORLD:-practice_course.world}
+
+  # ===========================================================================
   # Development Container (Building & Testing)
   # ===========================================================================
   # Interactive development - builds and runs your ROS 2 nodes

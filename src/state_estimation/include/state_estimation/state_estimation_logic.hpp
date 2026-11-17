@@ -38,6 +38,10 @@ struct ImuMeasurement
   /// rad^2. Pitch noise becomes acceleration noise (g * cos(pitch))^2 *
   /// pitch_variance through gravity removal (0.02 rad is ~0.2 m/s^2).
   double pitch_variance{0.0};
+  /// m, IMU position ahead of base_footprint (from TF). In a turn an
+  /// accelerometer ahead of the no-sideslip point (rear axle) feels
+  /// -omega^2 * lever on its forward axis, which is not acceleration.
+  double forward_offset{0.0};
 };
 
 /// Forward speed from wheel odometry (ICD-SNS-GNC: only twist.linear.x).
@@ -65,6 +69,16 @@ struct StateEstimationConfig
   double accel_noise_density_no_imu{4.0};
   /// Unmodelled change in yaw rate, (rad/s^2)^2/s. TBD.
   double yaw_accel_noise_density{1.0};
+
+  /// Wheel encoder scale error (one encoder, rear axle). It reads (1 + k) v
+  /// with k unknown (calibration, tyre wear). k cannot be observed without
+  /// an absolute reference, so it is not estimated; its effect is added to
+  /// the published covariance instead (estimate()). Constant part: stddev of
+  /// k. TBD (calibration).
+  double wheel_scale_stddev{0.01};
+  /// Varying part (scrub in turns): along-track noise, m^2 per metre
+  /// driven. TBD, set from the L2 sim test.
+  double distance_noise_density{1.0e-3};
 
   /// Wheel speed minus predicted speed (m/s) beyond which the wheels are
   /// slipping, on top of 3 sigma of the predicted speed. TBD.
@@ -124,7 +138,14 @@ public:
   /// Back to the odom origin with the initial covariance (`~/reset`).
   void reset();
 
+  /// Internal filter state (no wheel-scale term).
   const RobotState & state() const {return state_;}
+
+  /// Published estimate: state() plus the covariance an unknown, constant
+  /// wheel scale error k adds. Dead reckoning scales the path about the
+  /// odom origin by (1 + k), so position gains wheel_scale_stddev^2 * p p^T
+  /// (p = position in odom) and speed gains wheel_scale_stddev^2 * v^2.
+  RobotState estimate() const;
   const StateEstimationStatus & status() const {return status_;}
   const StateEstimationConfig & config() const {return config_;}
 

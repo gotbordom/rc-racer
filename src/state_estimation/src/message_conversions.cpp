@@ -79,11 +79,13 @@ void append(HealthReport & report, std::uint8_t level, const std::string & messa
 }  // namespace
 
 ImuMeasurement to_imu_measurement(
-  const sensor_msgs::msg::Imu & msg, const Eigen::Quaterniond & base_from_imu)
+  const sensor_msgs::msg::Imu & msg, const Eigen::Quaterniond & base_from_imu,
+  double forward_offset)
 {
   const Eigen::Matrix3d r = base_from_imu.normalized().toRotationMatrix();
 
   ImuMeasurement imu;
+  imu.forward_offset = forward_offset;
   imu.yaw_rate = (r * to_vector(msg.angular_velocity)).z();
   imu.yaw_rate_variance = rotated_variance(msg.angular_velocity_covariance, r, 2);
   imu.forward_specific_force = (r * to_vector(msg.linear_acceleration)).x();

@@ -3,6 +3,7 @@
 
 #include "state_estimation/extended_kalman_filter.hpp"
 
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -26,6 +27,10 @@ void ExtendedKalmanFilter::predict(
   StateMatrix q = StateMatrix::Zero();
   q(kSpeed, kSpeed) = inputs.accel_noise_density * dt;
   q(kYawRate, kYawRate) = inputs.yaw_accel_noise_density * dt;
+  // Along the heading only: q * distance driven this step.
+  const Eigen::Vector2d heading(std::cos(state.mean(kYaw)), std::sin(state.mean(kYaw)));
+  q.block<2, 2>(kX, kX) = inputs.distance_noise_density * std::abs(state.mean(kSpeed)) * dt *
+    heading * heading.transpose();
 
   state.mean(kX) = next.x;
   state.mean(kY) = next.y;

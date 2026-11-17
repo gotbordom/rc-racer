@@ -55,8 +55,13 @@ private:
     std_srvs::srv::Trigger::Response::SharedPtr response);
   void report_health(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  /// Rotation base_footprint -> IMU frame from TF, looked up once (static).
-  std::optional<Eigen::Quaterniond> imu_mount(const std::string & imu_frame);
+  /// IMU mount (TF base_footprint -> IMU frame), looked up once (static).
+  struct ImuMount
+  {
+    Eigen::Quaterniond rotation;
+    double forward_offset;  ///< m, translation x
+  };
+  std::optional<ImuMount> imu_mount(const std::string & imu_frame);
 
   void release();
 
@@ -79,7 +84,7 @@ private:
 
   // IMU mount, cached per frame name
   std::string imu_frame_;
-  std::optional<Eigen::Quaterniond> base_from_imu_;
+  std::optional<ImuMount> base_from_imu_;
   bool imu_mount_known_{true};
 
   // Counters at the previous diagnostics report

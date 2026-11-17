@@ -53,6 +53,8 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("process_noise.accel", d.accel_noise_density);
   declare_parameter("process_noise.accel_no_imu", d.accel_noise_density_no_imu);
   declare_parameter("process_noise.yaw_accel", d.yaw_accel_noise_density);
+  declare_parameter("process_noise.distance", d.distance_noise_density);
+  declare_parameter("inputs.wheel_odom.scale_stddev", d.wheel_scale_stddev);
   declare_parameter("slip.threshold", d.slip_threshold);
   declare_parameter("slip.yaw_rate_margin", d.slip_yaw_rate_margin);
   declare_parameter("slip.variance_scale", d.slip_variance_scale);
@@ -74,6 +76,8 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.accel_noise_density = get_parameter("process_noise.accel").as_double();
   c.accel_noise_density_no_imu = get_parameter("process_noise.accel_no_imu").as_double();
   c.yaw_accel_noise_density = get_parameter("process_noise.yaw_accel").as_double();
+  c.distance_noise_density = get_parameter("process_noise.distance").as_double();
+  c.wheel_scale_stddev = get_parameter("inputs.wheel_odom.scale_stddev").as_double();
   c.slip_threshold = get_parameter("slip.threshold").as_double();
   c.slip_yaw_rate_margin = get_parameter("slip.yaw_rate_margin").as_double();
   c.slip_variance_scale = get_parameter("slip.variance_scale").as_double();
@@ -202,19 +206,20 @@ void StateEstimationNode::on_timer()
   }
   last_tick_ = now;
 
-  odom_pub_->publish(to_odometry(logic_->state(), now));
+  const RobotState estimate = logic_->estimate();
+  odom_pub_->publish(to_odometry(estimate, now));
   if (tf_broadcaster_) {
-    tf_broadcaster_->sendTransform(to_transform(logic_->state(), now));
+    tf_broadcaster_->sendTransform(to_transform(estimate, now));
   }
 }
 
 void StateEstimationNode::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr & msg)
 {
-  const std::optional<Eigen::Quaterniond> mount = imu_mount(msg->header.frame_id);
+  const std::optional<ImuMount> mount = imu_mount(msg->header.frame_id);
   if (!mount) {
     return;
   }
-  logic_->update_imu(to_imu_measurement(*msg, *mount));
+  logic_->update_imu(to_imu_measurement(*msg, mount->rotation, mount->forward_offset));
 }
 
 void StateEstimationNode::on_wheel_odom(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
@@ -222,7 +227,8 @@ void StateEstimationNode::on_wheel_odom(const nav_msgs::msg::Odometry::ConstShar
   logic_->update_wheel_speed(to_wheel_speed(*msg));
 }
 
-std::optional<Eigen::Quaterniond> StateEstimationNode::imu_mount(const std::string & imu_frame)
+std::optional<StateEstimationNode::ImuMount> StateEstimationNode::imu_mount(
+  const std::string & imu_frame)
 {
   if (base_from_imu_ && imu_frame == imu_frame_) {
     return base_from_imu_;
@@ -231,7 +237,8 @@ std::optional<Eigen::Quaterniond> StateEstimationNode::imu_mount(const std::stri
     // The mount is static (URDF), so the latest transform is the transform.
     const auto tf = tf_buffer_->lookupTransform(kBaseFrame, imu_frame, tf2::TimePointZero);
     const auto & q = tf.transform.rotation;
-    base_from_imu_ = Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
+    base_from_imu_ = ImuMount{
+      Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized(), tf.transform.translation.x};
     imu_frame_ = imu_frame;
     imu_mount_known_ = true;
     return base_from_imu_;
@@ -283,7 +290,7 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   stat.add("imu_age", s.imu_age);
   stat.add("wheel_odom_age", s.wheel_age);
   stat.add("slip_detected", s.slip_detected);
-  stat.add("covariance_trace", logic_->state().covariance.trace());
+  stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);
   stat.add("motion_model", logic_->config().motion_model);

@@ -35,10 +35,13 @@ constexpr double kUnestimatedVariance = 1.0e6;
 ///
 /// @param base_from_imu rotation of the IMU mount (TF base_footprint ->
 ///        imu frame), applied to rates, specific force and covariances.
+/// @param forward_offset IMU position ahead of base_footprint (TF
+///        translation x), for the centripetal lever-arm correction.
 /// A covariance marked not-provided (-1) gives a NaN variance, so the logic
 /// rejects the sample. Pitch is set only when the orientation is provided.
 ImuMeasurement to_imu_measurement(
-  const sensor_msgs::msg::Imu & msg, const Eigen::Quaterniond & base_from_imu);
+  const sensor_msgs::msg::Imu & msg, const Eigen::Quaterniond & base_from_imu,
+  double forward_offset = 0.0);
 
 /// Wheel odometry to forward speed: only twist.linear.x (ICD-SNS-GNC §4).
 WheelSpeedMeasurement to_wheel_speed(const nav_msgs::msg::Odometry & msg);

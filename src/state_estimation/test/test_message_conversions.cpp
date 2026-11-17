@@ -74,6 +74,13 @@ TEST(ImuConversionTest, RotatedMountIsUndone)
   EXPECT_NEAR(to_imu_measurement(make_imu(), flipped).yaw_rate, -0.3, kTol);
 }
 
+TEST(ImuConversionTest, ForwardOffsetPassedThrough)
+{
+  const ImuMeasurement imu =
+    to_imu_measurement(make_imu(), Eigen::Quaterniond::Identity(), 0.23);
+  EXPECT_DOUBLE_EQ(imu.forward_offset, 0.23);
+}
+
 TEST(ImuConversionTest, PitchFromOrientationIsNoseDownPositive)
 {
   // REP-103: positive pitch is a rotation about +y, which tips the nose down.

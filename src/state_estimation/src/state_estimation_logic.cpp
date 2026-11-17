@@ -39,6 +39,10 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.accel_noise_density, "process_noise.accel");
   require_positive(config.accel_noise_density_no_imu, "process_noise.accel_no_imu");
   require_positive(config.yaw_accel_noise_density, "process_noise.yaw_accel");
+  require_positive(config.distance_noise_density, "process_noise.distance");
+  if (!(config.wheel_scale_stddev >= 0.0) || !std::isfinite(config.wheel_scale_stddev)) {
+    throw std::invalid_argument("inputs.wheel_odom.scale_stddev must be >= 0");
+  }
   require_positive(config.slip_threshold, "slip.threshold");
   require_positive(config.slip_yaw_rate_margin, "slip.yaw_rate_margin");
   require_positive(config.initial_pose_variance, "initial_covariance.pose");
@@ -87,6 +91,7 @@ void StateEstimationLogic::predict(double dt)
 
   PredictInputs inputs;
   inputs.yaw_accel_noise_density = config_.yaw_accel_noise_density;
+  inputs.distance_noise_density = config_.distance_noise_density;
   if (status_.imu_stale) {
     // Do not keep applying an old acceleration.
     inputs.forward_accel = 0.0;
@@ -104,11 +109,13 @@ void StateEstimationLogic::predict(double dt)
 
 void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
 {
+  const bool offset_ok = std::isfinite(imu.forward_offset);
   const bool pitch_ok =
     !imu.pitch || (std::isfinite(*imu.pitch) && std::isfinite(imu.pitch_variance) &&
     imu.pitch_variance >= 0.0);
   if (!valid_sample(imu.yaw_rate, imu.yaw_rate_variance) ||
-    !valid_sample(imu.forward_specific_force, imu.forward_specific_force_variance) || !pitch_ok)
+    !valid_sample(imu.forward_specific_force, imu.forward_specific_force_variance) || !pitch_ok ||
+    !offset_ok)
   {
     ++status_.rejected_measurements;
     return;
@@ -119,7 +126,10 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
   // Specific force on a body pitched nose-down by theta at rest reads
   // -g * sin(theta) on x; add it back to get the real acceleration.
   const double pitch = imu.pitch.value_or(0.0);
-  forward_accel_ = imu.forward_specific_force + kGravity * std::sin(pitch);
+  // Lever arm from the point with no sideways motion (rear axle) to the IMU.
+  const double lever = frame_->rear_axle_offset() + imu.forward_offset;
+  forward_accel_ = imu.forward_specific_force + kGravity * std::sin(pitch) +
+    imu.yaw_rate * imu.yaw_rate * lever;
   const double gravity_gain = kGravity * std::cos(pitch);  // d(accel) / d(pitch)
   forward_accel_variance_ = imu.forward_specific_force_variance +
     (imu.pitch ? gravity_gain * gravity_gain * imu.pitch_variance : 0.0);
@@ -160,6 +170,16 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     status_.slip_detected ? wheel.variance * config_.slip_variance_scale : wheel.variance;
   fusion_->update(state_, kSpeed, wheel.speed, status_.wheel_variance_used);
   guard_numerics();
+}
+
+RobotState StateEstimationLogic::estimate() const
+{
+  RobotState out = state_;
+  const double s2 = config_.wheel_scale_stddev * config_.wheel_scale_stddev;
+  const Eigen::Vector2d p(state_.mean(kX), state_.mean(kY));
+  out.covariance.block<2, 2>(kX, kX) += s2 * p * p.transpose();
+  out.covariance(kSpeed, kSpeed) += s2 * state_.mean(kSpeed) * state_.mean(kSpeed);
+  return out;
 }
 
 void StateEstimationLogic::guard_numerics()

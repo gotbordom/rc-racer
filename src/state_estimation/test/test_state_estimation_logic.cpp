@@ -135,6 +135,22 @@ TEST(StateEstimationLogicTest, GravityRemovedUsingPitch)
   EXPECT_NEAR(logic.state().mean(kSpeed), 0.0, 1e-9);
 }
 
+TEST(StateEstimationLogicTest, CentripetalLeverArmIsNotDeceleration)
+{
+  // Steady turn at omega = 1 rad/s: an IMU 0.05 m ahead of base_footprint is
+  // 0.192 + 0.05 m ahead of the rear axle and reads -omega^2 * 0.242 on its
+  // forward axis. The speed must not drop.
+  StateEstimationLogic logic;
+  ImuMeasurement imu = imu_sample(1.0, -1.0 * 1.0 * (0.192 + 0.05));
+  imu.forward_offset = 0.05;
+  logic.update_wheel_speed(wheel_sample(1.0));
+  for (int i = 0; i < 50; ++i) {  // 1 s, IMU only
+    logic.update_imu(imu);
+    logic.predict(kDt);
+  }
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.01);
+}
+
 TEST(StateEstimationLogicTest, PitchNoiseWidensSpeedUncertainty)
 {
   // Removing gravity with a noisy pitch adds (g * sigma_pitch)^2 to the
@@ -164,6 +180,84 @@ TEST(StateEstimationLogicTest, RejectsBadPitchVariance)
   imu.pitch_variance = NAN;
   logic.update_imu(imu);
   EXPECT_EQ(logic.status().rejected_measurements, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Wheel encoder scale error (one encoder, rear axle)
+// ---------------------------------------------------------------------------
+
+// Drive straight at 1 m/s for n cycles; the wheel reads (1 + bias) * 1 m/s.
+// Returns the estimate's x error.
+double drive_straight(StateEstimationLogic & logic, double bias, int n)
+{
+  std::mt19937 rng(1);
+  std::normal_distribution<double> gyro(0.0, kGyroStd);
+  std::normal_distribution<double> accel(0.0, kAccelStd);
+  std::normal_distribution<double> wheel(0.0, kWheelStd);
+  for (int i = 0; i < n; ++i) {
+    logic.predict(kDt);
+    logic.update_imu(imu_sample(gyro(rng), accel(rng)));
+    logic.update_imu(imu_sample(gyro(rng), accel(rng)));
+    logic.update_wheel_speed(wheel_sample(1.0 + bias + wheel(rng)));
+  }
+  return logic.state().mean(kX) - n * kDt;
+}
+
+TEST(StateEstimationLogicTest, MatchesDeadReckoningOnUnbiasedInputs)
+{
+  // Regression: estimating the scale as a filter state let wheel updates
+  // move the position through its correlation with the scale: 3.2 m off
+  // after 100 m of unbiased inputs. The position must follow the wheels.
+  StateEstimationLogic logic;
+  EXPECT_NEAR(drive_straight(logic, 0.0, 5000), 0.0, 0.1);
+}
+
+TEST(StateEstimationLogicTest, ScaleErrorIsInsidePublishedCovariance)
+{
+  // REQ-GNC-006: a wheel reading 0.5 % high puts the estimate 0.5 m ahead
+  // after 100 m. The filter cannot see that (state() stays tight), but the
+  // published estimate() must cover it. Distance noise off, to check the
+  // constant-scale term on its own.
+  StateEstimationConfig cfg;
+  cfg.distance_noise_density = 1e-12;
+  StateEstimationLogic logic(cfg);
+  const double error = drive_straight(logic, 0.005, 5000);
+  EXPECT_NEAR(error, 0.5, 0.1);
+  EXPECT_LT(3.0 * std::sqrt(logic.state().covariance(kX, kX)), error);  // filter alone: too tight
+  EXPECT_GT(3.0 * std::sqrt(logic.estimate().covariance(kX, kX)), error);
+}
+
+TEST(StateEstimationLogicTest, ScaleCovarianceGrowsWithDistanceFromOrigin)
+{
+  // A constant scale error scales the path about the odom origin.
+  StateEstimationConfig cfg;
+  cfg.distance_noise_density = 1e-12;  // isolate the constant part
+  StateEstimationLogic logic(cfg);
+  drive_straight(logic, 0.0, 2500);  // 50 m
+  const RobotState e = logic.estimate();
+  const RobotState s = logic.state();
+  const double x = e.mean(kX);
+  EXPECT_NEAR(
+    e.covariance(kX, kX) - s.covariance(kX, kX),
+    cfg.wheel_scale_stddev * cfg.wheel_scale_stddev * x * x, 1e-9);
+  const double y = e.mean(kY);  // ~mm from gyro noise
+  EXPECT_NEAR(
+    e.covariance(kY, kY) - s.covariance(kY, kY),
+    cfg.wheel_scale_stddev * cfg.wheel_scale_stddev * y * y, 1e-12);
+  EXPECT_TRUE(e.mean.isApprox(s.mean));  // only the covariance changes
+}
+
+TEST(StateEstimationLogicTest, DistanceNoiseGrowsAlongTrackOnly)
+{
+  StateEstimationConfig quiet;
+  quiet.distance_noise_density = 1e-12;
+  StateEstimationLogic logic;
+  StateEstimationLogic without(quiet);
+  drive_straight(logic, 0.0, 2500);
+  drive_straight(without, 0.0, 2500);
+  const double added = logic.state().covariance(kX, kX) - without.state().covariance(kX, kX);
+  EXPECT_NEAR(added, StateEstimationConfig{}.distance_noise_density * 50.0, 0.1 * 0.05);
+  EXPECT_NEAR(logic.state().covariance(kY, kY), without.state().covariance(kY, kY), 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +497,10 @@ TEST(StateEstimationLogicTest, RejectsInvalidConfig)
 
   cfg = StateEstimationConfig{};
   cfg.slip_variance_scale = 0.5;
+  EXPECT_THROW(StateEstimationLogic{cfg}, std::invalid_argument);
+
+  cfg = StateEstimationConfig{};
+  cfg.wheel_scale_stddev = -0.01;
   EXPECT_THROW(StateEstimationLogic{cfg}, std::invalid_argument);
 
   cfg = StateEstimationConfig{};

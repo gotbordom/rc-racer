@@ -25,6 +25,9 @@ struct PredictInputs
   double accel_noise_density{0.0};
   /// Unmodelled change in yaw rate, (rad/s^2)^2 per second of prediction.
   double yaw_accel_noise_density{0.0};
+  /// Along-track position noise per metre driven, m^2/m (wheel scale error
+  /// that varies, e.g. tyre scrub in turns).
+  double distance_noise_density{0.0};
 };
 
 class SensorFusionMethod

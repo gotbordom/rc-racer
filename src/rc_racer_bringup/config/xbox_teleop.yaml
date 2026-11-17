@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2025 Anthony Tracy
+# SPDX-License-Identifier: MIT
+#
+# Xbox controller -> /cmd_vel, car style. For joy's game_controller_node,
+# which uses SDL's standard gamepad layout (the same for Xbox, PlayStation
+# and most pads, over USB or Bluetooth) and makes up/left positive:
+#   axes:    0 left X, 1 left Y, 2 right X, 3 right Y, 4 LT, 5 RT
+#   buttons: 0 A, 1 B, 2 X, 3 Y, 4 Back, 5 Guide, 6 Start,
+#            7 left stick, 8 right stick, 9 LB, 10 RB
+# Check with: ros2 topic echo /joy
+#
+# A pad SDL has no mapping for gets a guessed layout (scrambled buttons, a
+# stick read as a half-range trigger). `make joy-sdl-map` measures the pad
+# and prints its mapping; add it to SDL_GAMECONTROLLERCONFIG in the
+# sim-manual compose service. The Xbox One Elite 2 over Bluetooth (firmware
+# 0x0523) is already there.
+#
+# Hold LB to drive (deadman): let go and a single zero command stops the car.
+# Left stick up/down = speed, right stick left/right = turn, RB = turbo.
+# /cmd_vel angular.z is a yaw rate; the Ackermann drive turns it into a
+# steering angle and clamps it at the steering limit.
+
+joy_node:
+  ros__parameters:
+    device_id: 0
+    deadzone: 0.05
+    autorepeat_rate: 20.0   # Hz; keeps /cmd_vel flowing while a stick is held still
+
+teleop_twist_joy_node:
+  ros__parameters:
+    require_enable_button: true
+    enable_button: 9         # LB
+    enable_turbo_button: 10  # RB
+    axis_linear:
+      x: 1                   # left stick vertical
+    scale_linear:
+      x: 1.0                 # m/s at full stick
+    scale_linear_turbo:
+      x: 3.0
+    axis_angular:
+      yaw: 2                 # right stick horizontal
+    scale_angular:
+      yaw: 1.0               # rad/s at full stick
+    scale_angular_turbo:
+      yaw: 1.5

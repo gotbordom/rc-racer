@@ -36,9 +36,9 @@ It does **not**:
 
 | Name | Type | ICD | Rate | Notes |
 | --- | --- | --- | --- | --- |
-| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance |
+| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance. Pose z, roll, pitch variance is **0**: `base_footprint` is on the ground plane by definition (REP-120), and RViz draws a 2D ellipse only then. Velocities not estimated (lateral, vertical, roll/pitch rates) have variance 1e6 |
 | TF `odom` → `base_footprint` | `tf2_msgs/msg/TFMessage` | [Conventions §2](Architecture-Conventions) | 50 Hz | Only publisher of this edge |
-| `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it |
+| `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it. **Not implemented yet**; the slip flag is in `/diagnostics` |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | [Conventions §8](Architecture-Conventions) | 1 Hz | See §5 |
 
 ### 3.3 Actions / Services offered
@@ -58,16 +58,29 @@ It does **not**:
 | `robot.wheelbase` | double | 0.384 | m, used by the bicycle model |
 | `inputs.imu.timeout` | double | 0.1 | s |
 | `inputs.wheel_odom.timeout` | double | 0.2 | s |
-| `process_noise.*` | double | TBD | Tuned in sim |
-| `slip.threshold` | double | TBD | Wheel vs IMU speed mismatch (m/s) that counts as slip |
+| `inputs.wheel_odom.scale_stddev` | double | 0.01 (TBD) | Stddev of the encoder's constant scale error k (calibration, tyre wear). Added to the published covariance, never estimated (§4) |
+| `robot.max_steering_angle` | double | 0.52 | rad, used by the bicycle model's slide check |
+| `robot.rear_axle_offset` | double | 0.192 | m, rear axle forward to `base_footprint` (midway between the axles, Conventions §2.1). The bicycle model integrates the rear axle, which has no sideways motion, then moves to `base_footprint` |
+| `process_noise.accel` | double | 0.05 (TBD) | (m/s²)²/s, unmodelled forward acceleration while IMU acceleration is the input |
+| `process_noise.accel_no_imu` | double | 4.0 (TBD) | (m/s²)²/s, forward acceleration when the IMU is stale |
+| `process_noise.yaw_accel` | double | 1.0 (TBD) | (rad/s²)²/s, unmodelled change in yaw rate |
+| `process_noise.distance` | double | 1e-3 (TBD) | m²/m, along-track position noise per metre driven: wheel scale error that varies (tyre scrub in turns, 0.3-0.8 % in sim) |
+| `slip.threshold` | double | 0.3 (TBD) | m/s. Wheel speed minus predicted speed beyond this, plus 3σ of the predicted speed, counts as slip |
+| `slip.yaw_rate_margin` | double | 0.2 (TBD) | rad/s. Yaw rate beyond what the motion model allows at this speed that counts as a slide |
+| `slip.variance_scale` | double | 1e4 (TBD) | Factor on the wheel-speed variance while slipping |
+| `initial_covariance.pose` / `.speed` / `.yaw_rate` | double | 1e-6 / 1.0 / 0.1 | Covariance diagonal after start and `~/reset` |
 
 ## 4. Behaviour
 
 - **State:** 2D: `x, y, yaw` in `odom`, plus forward speed `v` and yaw rate `ω` (Open Item 3).
 - **Lifecycle:** `configure` validates parameters and builds the logic object. `activate` starts subscriptions, timer and publishers, with the estimate at the origin. `deactivate` stops publishing. `cleanup` drops state.
-- **Predict** on a fixed-rate timer using the motion model.
-- **Update** on each `/imu` (yaw rate, acceleration) and `/wheel/odom` (forward speed).
-- **Slip:** when wheel speed and IMU-derived speed disagree by more than `slip.threshold`, inflate the wheel-odometry variance until they agree again.
+- **Predict** on a fixed-rate timer using the motion model, with the latest IMU forward acceleration as the speed input (not reused once the IMU is stale).
+- **Update** on each `/imu` (yaw rate) and `/wheel/odom` (forward speed).
+- **IMU orientation:** only roll and pitch are used, to remove gravity from the forward acceleration. The absolute yaw is world-frame data and is ignored (ISSUE-002). Pitch noise is carried into the acceleration variance ((g·σ_pitch)², ~0.2 m/s² for 0.02 rad).
+- **IMU lever arm:** in a turn an accelerometer ahead of the rear axle feels −ω²·l on its forward axis (l = `robot.rear_axle_offset` + the IMU's forward offset from TF); it is added back, as it is not acceleration.
+- **Wheel encoder scale error:** one encoder on the rear axle reads (1 + k)·v with k unknown. With no absolute reference, k is **unobservable**: estimating it, even as a Schmidt consider state, let the EKF invent information and drift the speed and position (3.2 m after 100 m of unbiased inputs). So k is not in the state. Its constant part is added to the **published** covariance only: dead reckoning scales the path about the `odom` origin by (1 + k), so position gains `scale_stddev`²·p·pᵀ and speed `scale_stddev`²·v². Its varying part is `process_noise.distance`. `localization` can estimate k later from landmark fixes.
+- **Motion model:** the bicycle model integrates the **rear axle**, the only point of an Ackermann car that does not move sideways, and moves the result to `base_footprint`; on a turn `base_footprint` slides sideways at ω × `robot.rear_axle_offset`. Leaving this out cost 0.37-0.45 m over the L2 loop. Integration follows the measured yaw rate even beyond the steering limit, so a slide cannot corrupt the heading. The model's limit (`RobotFrame::constrain`) is used only to detect slides.
+- **Slip:** two checks. (1) *Wheel slip*: wheel speed and the IMU-predicted speed disagree by more than `slip.threshold` plus 3σ of the predicted speed. (2) *Slide*: the yaw rate exceeds what the motion model allows at the current speed by `slip.yaw_rate_margin`; this never triggers for the unicycle. While either is detected, the wheel-odometry variance is multiplied by `slip.variance_scale`, until they agree again.
 - **Degraded modes:**
 
 | Missing input | Behaviour | Diagnostics |
@@ -75,11 +88,23 @@ It does **not**:
 | `/wheel/odom` | Continue on IMU; speed variance grows | WARN |
 | `/imu` | Continue on wheel speed only; yaw variance grows quickly | ERROR |
 | both | Keep predicting with growing covariance; do not stop publishing | ERROR |
+| NaN/Inf in an input | Sample rejected and counted | WARN |
 | NaN/Inf in estimate | Reset to last good estimate with inflated covariance | ERROR |
 
 ## 5. Health
 
-`/diagnostics` status `state_estimation`: OK when both inputs are fresh. WARN on stale wheel odometry, slip detected, or position covariance above TBD. ERROR on stale IMU or numerical reset. Key values: input ages, slip flag, covariance trace.
+`/diagnostics` status `state_estimation` (1 Hz, `diagnostic_updater`). The worst condition sets the level, ranked ERROR > STALE > WARN > OK, and every condition is listed in the message:
+
+| Level | When |
+| --- | --- |
+| STALE | Inactive, or an input has not arrived yet (ICD-SNS-GNC §5) |
+| ERROR | Stale IMU; no TF from `base_footprint` to the IMU frame; numerical reset since the last report |
+| WARN | Stale wheel odometry; slip detected; rejected samples since the last report |
+| OK | Otherwise |
+
+Key values: `imu_age`, `wheel_odom_age`, `slip_detected`, `covariance_trace`, `numerical_resets`, `rejected_measurements`, `motion_model`, `fusion_method`. A WARN on position covariance above a limit waits for that limit (TBD, from the L2 test).
+
+**IMU mount:** the node looks up `base_footprint` → IMU frame once from TF (static, from the URDF) and rotates rates, specific force and covariances into `base_footprint`. Until the transform exists, IMU samples are ignored.
 
 ## 6. Internal Design
 
@@ -101,7 +126,9 @@ Keeping `RobotFrame` free of ROS (rather than inside `RobotNode` as in the origi
 | L4 unit | `test_robot_frame` | Bicycle/unicycle prediction: straight line, constant-radius turn, steering limit |
 | L4 unit | `test_state_estimation_logic` | Converges on consistent inputs; covariance grows without updates; slip inflates wheel variance; NaN recovery |
 | L3 component | `test_state_estimation_node` | Stub inputs per ICD-SNS-GNC → `/odom` at 50 Hz with correct frames and non-zero covariance; TF published once; STALE/WARN/ERROR on missing inputs; `~/reset` |
-| L2 subsystem | `test_gnc_state_estimation_sim` | Drive the practice course in sim; `/odom` vs ground truth within REQ-GNC-002 drift (TBD-003) |
+| L2 subsystem | `test_gnc_state_estimation_sim` | Drive a ~100 m loop of the practice course in sim (pure pursuit on ground truth, `/sim/truth/poses`); `/odom` rate ≥ 45 Hz, no jumps (≤ 0.1 m between samples), drift ≤ TBD-003, final heading ≤ 0.1 rad, ≥ 95 % of samples inside the 3σ ellipse, no ERROR diagnostics. Prints a results table and saves a per-sample trace |
+
+**L2 results** (2026-11-17, practice course loop, 98.7 m in 100 s): final error 0.13 m (**0.13 % drift**), max 0.20 m, heading 0.2°, `/odom` 50.0 Hz, max step 0.022 m, 100 % inside 3σ (reported 1σ 0.34 m). The test found four model errors, now fixed and covered by unit tests: the bicycle model ignored `base_footprint`'s sideways slide (0.37-0.45 m), pitch noise was missing from the acceleration variance, the IMU lever arm read as braking in turns, and the wheel scale error was treated as white noise (overconfident: 17 % inside 3σ).
 
 ## 8. Open Items
 

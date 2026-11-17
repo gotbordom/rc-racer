@@ -1,0 +1,95 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Help Height: 0
+    Tree Height: 400
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (1 m, odom)
+      Enabled: true
+      Reference Frame: <Fixed Frame>
+      Cell Size: 1
+      Plane Cell Count: 60
+      Color: 160; 160; 164
+      Alpha: 0.5
+    - Class: rviz_default_plugins/RobotModel
+      Name: Car
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Alpha: 1
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: true
+      Marker Scale: 0.5
+      Frames:
+        All Enabled: true
+    - Class: rviz_default_plugins/Odometry
+      Name: /odom (estimate + covariance)
+      Enabled: true
+      Topic:
+        Value: /odom
+        Depth: 10
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Keep: 200
+      Position Tolerance: 0.25
+      Angle Tolerance: 0.2
+      Shape:
+        Value: Arrow
+        Color: 255; 25; 0
+        Alpha: 1
+        Shaft Length: 0.5
+        Shaft Radius: 0.03
+        Head Length: 0.15
+        Head Radius: 0.08
+      Covariance:
+        Value: true
+        Position:
+          Value: true
+          Color: 204; 51; 204
+          Alpha: 0.3
+          Scale: 3
+        Orientation:
+          Value: true
+          Frame: Local
+          Color: 255; 255; 127
+          Alpha: 0.5
+          Scale: 3
+          Offset: 1
+  Global Options:
+    Fixed Frame: odom
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Target Frame: base_footprint
+      Distance: 12
+      Pitch: 0.9
+      Yaw: 3.6
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+Window Geometry:
+  Width: 1400
+  Height: 900
+  Displays:
+    collapsed: false

@@ -103,6 +103,13 @@ services:
       # SDL's udev lookup finds no controllers in the container (the host's
       # udev data lacks the joystick tag here); scan /dev/input instead
       - SDL_JOYSTICK_DISABLE_UDEV=1
+      # Controller mappings missing from Humble's SDL (2.0.20). Without one,
+      # SDL guesses a layout and scrambles buttons and axes (e.g. a stick
+      # read as a half-range trigger). Format: GUID,name,mapping; one per
+      # line. GUIDs come from `ros2 run joy joy_enumerate_devices`.
+      #   Xbox One Elite 2, Bluetooth, firmware 0x0523 (the entries for
+      #   0x0513/0x0517 in SDL_GameControllerDB; raw layout checked by hand)
+      - "SDL_GAMECONTROLLERCONFIG=050000005e040000220b000023050000,Xbox One Elite 2 Controller,a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b6,leftstick:b13,lefttrigger:a5,leftx:a0,lefty:a1,rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4,platform:Linux,"
     volumes:
       # Live sources for the packages under test (built on start)
       - ../src:/ros2_ws/src:ro

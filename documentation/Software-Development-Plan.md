@@ -886,6 +886,7 @@ The controller is read by `joy`'s `game_controller_node`, which uses SDL's stand
 | `make joy-calibrate` | Quick fix: detect the buttons and axes and apply them to teleop until it restarts |
 | `make keyboard` | Drive with the keyboard instead |
 | `make se-reset`, `se-deactivate`, `se-activate`, `se-diagnostics` | `state_estimation` service, lifecycle and health |
+| `make se-watch` | Stream `state_estimation`'s health, one line per report. A slip WARN shows for only one report (about 1 s), so watch here rather than with `se-diagnostics`; a rise in `slip_events` is a slip even if its WARN scrolled past |
 | `make shell` | Shell in the sim container with ROS sourced |
 
 `make` on its own lists every target.

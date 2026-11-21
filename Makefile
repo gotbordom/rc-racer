@@ -17,7 +17,7 @@ ROS = docker exec -it $(SIM) bash -c "source install/setup.bash && $(1)"
 
 .DEFAULT_GOAL := help
 .PHONY: help images sim down shell keyboard joy-echo joy-devices joy-calibrate \
-        joy-sdl-map se-reset se-diagnostics se-deactivate se-activate test test-system \
+        joy-sdl-map se-reset se-diagnostics se-watch se-deactivate se-activate test test-system \
         _sim-running
 
 help: ## List the targets
@@ -67,6 +67,9 @@ se-reset: _sim-running ## Reset the estimate to the odom origin (~/reset)
 
 se-diagnostics: _sim-running ## Show state_estimation's latest health report
 	$(call ROS,ros2 topic echo --once /diagnostics)
+
+se-watch: _sim-running ## Stream state_estimation's health reports, one line each (Ctrl+C stops)
+	$(call ROS,ros2 run rc_racer_bringup se_watch.py)
 
 se-deactivate: _sim-running ## Lifecycle: deactivate state_estimation (/odom stops)
 	$(call ROS,ros2 lifecycle set /state_estimation deactivate)

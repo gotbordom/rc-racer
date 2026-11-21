@@ -564,7 +564,9 @@ Based on Traxxas Slash hardware specifications from `documentation/Rc-Car-Design
 
 Front wheels are mounted on steering hinges (revolute about Z); the Gazebo `AckermannSteering` system computes the inner/outer steering angles and rear wheel speed from a `Twist` command.
 
-**Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction (`mu = 1.0` on the tires). Not modelled: tire slip/deformation, suspension, motor torque curves, or terrain-dependent friction.
+**Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction. Not modelled: tire deformation, suspension, motor torque curves, or terrain-dependent friction.
+
+**Tyre friction** is the `tire_mu` launch argument (`make sim MU=...`), default **0.5**: dirt or dry grass, the low-grip end of the usual RoboMagellan surfaces (REQ-SYS-009). Dry pavement is about 0.8, and wet grass about 0.3. The ground plane keeps the SDF default (1.0), and Gazebo uses the lower of the two. Only the rear wheels drive, so grip caps the acceleration at about **3.3 × `tire_mu` m/s²** (measured 2026-11-21: 1.7 m/s² at 0.5, 0.6 m/s² at 0.2). The drive ramps the wheel speed at 3 m/s², so below about 0.9 a full-throttle launch spins the rear wheels: the wheel reaches the commanded speed in 1 s and the body follows more slowly. Use a low value (for example `MU=0.2`) to exercise slip handling.
 
 Wheel joints carry only bearing-level losses (`damping = 0.001`, `friction = 0`). With 33.7 mm wheels, larger values become tens of newtons of drag at the tire and the free-rolling front wheels skid instead of rolling (the car crawls and slides sideways instead of turning). The smoke test checks ground-truth speed and turn rate against the command to catch this.
 
@@ -867,6 +869,7 @@ ros2 launch gazebo_ros gazebo.launch.py
 ```bash
 make sim                     # = xhost +local:docker && docker compose ... up sim-manual
 make sim WORLD=empty_course.world
+make sim MU=0.2               # low-grip tyres (default 0.5), see §4.2
 ```
 
 | Control | Xbox controller (`config/xbox_teleop.yaml`) |

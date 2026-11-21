@@ -11,6 +11,16 @@
 -->
 <robot name="rc_racer" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <!-- Tyre-ground friction coefficient. The ground plane is left at the SDF
+       default (1.0) and Gazebo uses the lower of the two, so this sets the
+       grip: 0.5 = dirt / dry grass (worst case of the usual RoboMagellan
+       surfaces), ~0.8 = dry pavement, ~0.3 = wet grass. Only the rear
+       wheels drive, so grip caps the acceleration at about 3.3 * tire_mu
+       m/s^2 (measured: 1.7 at 0.5, 0.6 at 0.2). Below ~0.9 a full-throttle
+       launch (the drive's 3 m/s^2 limit) spins the rear wheels. -->
+  <xacro:arg name="tire_mu" default="0.5"/>
+  <xacro:property name="tire_mu" value="$(arg tire_mu)"/>
+
   <!-- Include component files -->
   <xacro:include filename="$(find rc_racer_simulation)/urdf/chassis.urdf.xacro"/>
   <xacro:include filename="$(find rc_racer_simulation)/urdf/wheels.urdf.xacro"/>

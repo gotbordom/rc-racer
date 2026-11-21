@@ -10,7 +10,8 @@ optionally, Xbox controller teleop (config/xbox_teleop.yaml: hold LB, left
 stick = speed, right stick = turn, RB = turbo).
 
 Launch arguments: world (default practice_course.world), headless
-(default false), rviz (default true), joystick (default true).
+(default false), rviz (default true), joystick (default true), tire_mu
+(tyre-ground friction, default 0.5).
 
 For the keyboard instead of a controller, in another terminal:
   ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -47,10 +48,12 @@ def generate_launch_description():
         DeclareLaunchArgument('headless', default_value='false'),
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('joystick', default_value='true'),
+        DeclareLaunchArgument('tire_mu', default_value='0.5'),
 
         _include('rc_racer_simulation', 'simulation.launch.py', {
             'world': LaunchConfiguration('world'),
             'headless': LaunchConfiguration('headless'),
+            'tire_mu': LaunchConfiguration('tire_mu'),
         }),
         _include('state_estimation', 'state_estimation.launch.py', {'use_sim_time': 'true'}),
 

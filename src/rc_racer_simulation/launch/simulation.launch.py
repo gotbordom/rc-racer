@@ -10,6 +10,7 @@ Uses ros_gz_bridge to connect Gazebo topics to ROS 2.
 Usage:
     ros2 launch rc_racer_simulation simulation.launch.py
     ros2 launch rc_racer_simulation simulation.launch.py headless:=true
+    ros2 launch rc_racer_simulation simulation.launch.py tire_mu:=0.3
 """
 
 import os
@@ -48,6 +49,12 @@ def generate_launch_description():
         description='Run Gazebo in headless mode (no GUI)'
     )
 
+    tire_mu_arg = DeclareLaunchArgument(
+        'tire_mu',
+        default_value='0.5',
+        description='Tyre-ground friction coefficient (0.5 = dirt / dry grass)'
+    )
+
     # Paths
     world_path = PathJoinSubstitution([pkg_rc_racer_sim, 'worlds', LaunchConfiguration('world')])
     # Gazebo names its topics after the world, which is named after its file
@@ -57,7 +64,7 @@ def generate_launch_description():
 
     # Process URDF with xacro
     robot_description = ParameterValue(
-        Command(['xacro ', urdf_path]),
+        Command(['xacro ', urdf_path, ' tire_mu:=', LaunchConfiguration('tire_mu')]),
         value_type=str
     )
 
@@ -157,6 +164,7 @@ def generate_launch_description():
         world_arg,
         use_sim_time_arg,
         headless_arg,
+        tire_mu_arg,
         gz_sim_server,
         gz_sim_gui,
         robot_state_publisher,

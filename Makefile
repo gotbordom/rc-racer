@@ -9,6 +9,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 SIM     := rc-racer-sim-manual
 DEV_IMG := rc-racer-dev:latest
 WORLD   ?= practice_course.world
+MU      ?= 0.5
 PKG     ?=
 FILTER  ?=
 
@@ -24,7 +25,7 @@ help: ## List the targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 	@echo
-	@echo "  Variables: WORLD=<file>.world (sim), PKG=<package> (test), FILTER=<regex> (test-system)"
+	@echo "  Variables: WORLD=<file>.world, MU=<tyre friction> (sim), PKG=<package> (test), FILTER=<regex> (test-system)"
 
 # --- Images ------------------------------------------------------------------
 
@@ -35,7 +36,7 @@ images: ## Build the simulation and dev images (after Dockerfile changes)
 
 sim: ## Gazebo GUI + state_estimation + RViz + Xbox teleop (Ctrl+C stops)
 	@xhost +local:docker >/dev/null 2>&1 || echo "xhost not found: GUI windows may not open"
-	SIM_WORLD=$(WORLD) $(COMPOSE) up sim-manual
+	SIM_WORLD=$(WORLD) SIM_TIRE_MU=$(MU) $(COMPOSE) up sim-manual
 
 down: ## Stop and remove all project containers
 	$(COMPOSE) down

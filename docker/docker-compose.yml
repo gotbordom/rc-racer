@@ -130,6 +130,7 @@ services:
         source install/setup.bash &&
         ros2 launch rc_racer_bringup sim_manual.launch.py
         world:=${SIM_WORLD:-practice_course.world}
+        tire_mu:=${SIM_TIRE_MU:-0.5}
 
   # ===========================================================================
   # Development Container (Building & Testing)

@@ -138,6 +138,8 @@ Keeping `RobotFrame` free of ROS (rather than inside `RobotNode` as in the origi
 
 **L2 results** (2026-11-17, practice course loop, 98.7 m in 100 s): final error 0.13 m (**0.13 % drift**), max 0.20 m, heading 0.2°, `/odom` 50.0 Hz, max step 0.022 m, 100 % inside 3σ (reported 1σ 0.34 m). The test found four model errors, now fixed and covered by unit tests: the bicycle model ignored `base_footprint`'s sideways slide (0.37-0.45 m), pitch noise was missing from the acceleration variance, the IMU lever arm read as braking in turns, and the wheel scale error was treated as white noise (overconfident: 17 % inside 3σ).
 
+**With `tire_mu` 0.5** (2026-11-21, the new sim default; the result above was at 1.0): 98.8 m in 100 s, final error 0.37 m (**0.37 % drift**), max 0.38 m, heading 0.04°, estimated distance +0.51 % (the tyres creep under drive and in turns, so the wheel over-reads), 100 % inside 3σ (reported 1σ 0.34 m), no non-OK diagnostics.
+
 ## 8. Open Items
 
 | # | Question | Options | Recommendation |

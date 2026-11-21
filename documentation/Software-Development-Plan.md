@@ -876,8 +876,8 @@ make sim MU=0.2               # low-grip tyres (default 0.5), see §4.2
 | --- | --- |
 | Enable (deadman) | Hold **LB**. Releasing it sends one zero command, which stops the car |
 | Speed | Left stick up / down (1 m/s full stick) |
-| Turn | Right stick left / right (1 rad/s full stick; the drive clamps it at the steering limit) |
-| Turbo | Hold **RB** as well (3 m/s, 1.5 rad/s) |
+| Steer | Right stick left / right: a steering angle, like an RC transmitter. Full stick is full lock (±0.52 rad) at any speed, and the wheels follow the stick in reverse too (`steering_relay` turns it into the matching yaw rate on `/cmd_vel`) |
+| Turbo | Hold **RB** as well (3 m/s) |
 
 The controller is read by `joy`'s `game_controller_node`, which uses SDL's standard gamepad layout, so any pad SDL knows works the same over USB or Bluetooth. Plug it in before or after starting. With `make sim` running, in a second terminal:
 

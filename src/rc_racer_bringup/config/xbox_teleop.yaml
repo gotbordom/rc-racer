@@ -16,9 +16,12 @@
 # 0x0523) is already there.
 #
 # Hold LB to drive (deadman): let go and a single zero command stops the car.
-# Left stick up/down = speed, right stick left/right = turn, RB = turbo.
-# /cmd_vel angular.z is a yaw rate; the Ackermann drive turns it into a
-# steering angle and clamps it at the steering limit.
+# Left stick up/down = speed, right stick left/right = steering, RB = turbo.
+# The right stick is a steering angle, like an RC transmitter: full left is
+# full lock at any speed, and the wheels follow the stick in reverse too.
+# teleop_twist_joy sends angular.z as a steering fraction (-1..1) to
+# steering_relay, which turns it into the yaw rate for that angle at the
+# commanded speed and publishes /cmd_vel (scripts/steering_relay.py).
 
 joy_node:
   ros__parameters:
@@ -40,6 +43,11 @@ teleop_twist_joy_node:
     axis_angular:
       yaw: 2                 # right stick horizontal
     scale_angular:
-      yaw: 1.0               # rad/s at full stick
+      yaw: 1.0               # steering fraction at full stick (1 = full lock)
     scale_angular_turbo:
-      yaw: 1.5
+      yaw: 1.0
+
+steering_relay:
+  ros__parameters:
+    wheelbase: 0.384           # m; ICD-GNC-ACT, rc_racer.urdf.xacro
+    max_steering_angle: 0.52   # rad; ICD-GNC-ACT, wheels.urdf.xacro steering_limit

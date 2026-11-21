@@ -7,7 +7,7 @@ Drive the simulated car by hand and watch the estimate.
 Starts the Gazebo simulation (GUI), state_estimation on sim time (lifecycle
 autostart), RViz (TF tree, the car, and /odom with its covariance) and,
 optionally, Xbox controller teleop (config/xbox_teleop.yaml: hold LB, left
-stick = speed, right stick = turn, RB = turbo).
+stick = speed, right stick = steering angle, RB = turbo).
 
 Launch arguments: world (default practice_course.world), headless
 (default false), rviz (default true), joystick (default true), tire_mu
@@ -72,11 +72,21 @@ def generate_launch_description():
             parameters=[teleop_config, sim_time],
             condition=joystick,
         ),
+        # Its angular.z is a steering fraction; steering_relay makes it a
+        # yaw rate on /cmd_vel
         Node(
             package='teleop_twist_joy',
             executable='teleop_node',
             name='teleop_twist_joy_node',
             parameters=[teleop_config, sim_time],
+            remappings=[('cmd_vel', '/steering_relay/input')],
+            condition=joystick,
+        ),
+        Node(
+            package='rc_racer_bringup',
+            executable='steering_relay.py',
+            name='steering_relay',
+            parameters=[teleop_config],
             condition=joystick,
         ),
     ])

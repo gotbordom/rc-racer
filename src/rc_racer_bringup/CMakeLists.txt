@@ -14,6 +14,7 @@ install(DIRECTORY launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 install(PROGRAMS scripts/joy_calibrate.py scripts/se_watch.py
+  scripts/steering_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

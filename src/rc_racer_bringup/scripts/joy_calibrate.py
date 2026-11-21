@@ -150,7 +150,8 @@ def teleop_mode():
         'enable_button': lb, 'enable_turbo_button': rb,
         'axis_linear.x': lin, 'axis_angular.yaw': ang,
         'scale_linear.x': 1.0 * lin_sign, 'scale_linear_turbo.x': 3.0 * lin_sign,
-        'scale_angular.yaw': 1.0 * ang_sign, 'scale_angular_turbo.yaw': 1.5 * ang_sign,
+        # scale_angular is a steering fraction (steering_relay): 1 = full lock
+        'scale_angular.yaw': 1.0 * ang_sign, 'scale_angular_turbo.yaw': 1.0 * ang_sign,
     }
     print(f'\nYour pad: {settings}', flush=True)
     for name, value in settings.items():

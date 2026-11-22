@@ -28,8 +28,9 @@ This document outlines the software development plan for the RC Racer autonomous
 
 | Feature | Name | Element | Status |
 | --- | --- | --- | --- |
-| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models, filter, ROS node and L2 sim test done (0.13 % drift in sim); ready for review |
+| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models, filter, ROS node and L2 sim test done (0.37 % drift in sim at `tire_mu` 0.5); manual checks in PR #1 |
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
+| 2.3 | `validation-scenarios` | TST | ⏳ Planned: turn the manual validation cases into automated tests (§3.6). Next after PR #1 |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |
@@ -509,6 +510,43 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 - **Isolation:** Dedicated `ROS_DOMAIN_ID=99`
 - **Headless:** Gazebo server mode for CI (no GUI)
 - **Results:** Mounted volume for test output
+
+### 3.6 Validation Cases
+
+Hands-on checks in the sim (driving by hand, §5.6) find problems that the planned tests miss. Each check, and each problem it finds, becomes a **validation case** in the register below, so every one ends up as an automated test at some level. Feature **2.3 `validation-scenarios`** builds the tooling and automates the cases found so far. After that, the register is a living list: add a row for every new manual check or finding, in any feature, and automate it in that feature or note where it will be.
+
+**Test levels**, cheapest first. Use the cheapest level that can show the problem.
+
+| Level | Where | Use for |
+| --- | --- | --- |
+| Unit | The component's logic tests (no ROS, §2) | Behaviour of the algorithm: slip logic, model geometry. A fix found in a scenario gets a unit test here too |
+| Launch | The component's launch test (no Gazebo) | Node behaviour: lifecycle, parameters, services, diagnostics, TF publishers |
+| Scenario | `test_gnc_state_estimation_maneuvers` (planned, 2.3): one scenario file per case in `test/system/scenarios/`, with `tire_mu`, a scripted command sequence (time, speed, steering fraction) and pass criteria | Driving cases with simple, well-defined inputs |
+| Recording | The same test, driven by a recorded manual run (`make record`, planned in 2.3: `/cmd_vel` after the steering relay, stamped with sim time, converted to a scenario file) | Messy, human-shaped driving that is hard to script |
+| L2 | The component's L2 sim test | Properties over a whole drive (drift, covariance) |
+| Manual | This register only | Visual checks that need a person (RViz) |
+
+**Scenario and recording tests check properties, not a trajectory** ("estimate within X of truth", "≥ 95 % inside 3σ", "WARN within 0.5 s"), because replays never reproduce a run exactly: Gazebo's real-time factor varies, and slides and spins diverge.
+
+**Register.** Status: ⏳ not automated yet · ✅ automated · ❌ known failure (the test is marked expected-fail until fixed).
+
+| ID | Case | Found / checked | Requirement | Level | Status |
+| --- | --- | --- | --- | --- | --- |
+| VAL-001 | Turbo (3 m/s) straight and hard stop, forward and reverse: no false slip, speed tracks the wheel, settles to 0 | Manual pass 2026-11-21 (μ 1.0) | REQ-GNC-002, -005 | Scenario (μ 1.0 and 0.5) | ⏳ |
+| VAL-002 | Reverse with turns: heading within 1° of truth, arrows the way the car faces | Manual pass 2026-11-17 | REQ-GNC-002 | Scenario | ⏳ |
+| VAL-003 | Full-lock circles at normal speed, both ways: geometry at full lock, IMU lever arm, **no false yaw-rate slip** at the steering limit (margin `slip.yaw_rate_margin`, TBD) | Manual, to do | REQ-GNC-002, -005 | Scenario | ⏳ |
+| VAL-004 | Full-lock turbo at μ 0.5: the car slides or spins. WARN on oversteer, recovers to OK, never stuck; measure the position error | Manual, to do | REQ-GNC-005 | Scenario (criteria set from the first runs) | ⏳ |
+| VAL-005 | Full-throttle launch at μ 0.5: the wheel spins up ahead of the body. WARN within 0.5 s, estimate follows the IMU, back to OK | Manual pass 2026-11-21 (0.03 m error over 5.9 m) | REQ-GNC-005 | Scenario | ⏳ |
+| VAL-006 | Braking from 3 m/s at μ 0.5: the car slides on faster than the wheels. Should be detected | Found 2026-11-21: **not detected** (spec Open Item 5) | REQ-GNC-005 | Scenario + unit | ❌ |
+| VAL-007 | Driving into an obstacle (the bench): slip ends via the safety nets, no getting stuck; impact itself not seen (DEV-07) | Manual 2026-11-17 | REQ-GNC-005 | Unit ✅ (`CrashSpinDownIsDetected`, `CrashTheImuMissedEndsWhenStopped`); recording | ⏳ |
+| VAL-008 | Covariance ellipse grows while driving | Manual, to do | REQ-GNC-006 | Unit ✅ (`CovarianceGrowsWithoutUpdates`); L2 assertion | ⏳ |
+| VAL-009 | `/odom` speed against `/sim/truth/wheel_odom`: no lag or bias | Recorder log 2026-11-21 | REQ-GNC-002 | L2 assertion | ⏳ |
+| VAL-010 | `~/reset` while driving: back to the origin, covariance collapses | Manual pass 2026-11-17 | - | Launch ✅ (`test_4_reset_returns_to_origin`) | ✅ |
+| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | Launch | ⏳ |
+| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | Launch | ⏳ |
+| VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ |
+| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | Unit (`yaw_rate()`) | ⏳ |
+| VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | Manual | - |
 
 ---
 

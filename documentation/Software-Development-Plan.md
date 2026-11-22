@@ -528,25 +528,27 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 
 **Scenario and recording tests check properties, not a trajectory** ("estimate within X of truth", "≥ 95 % inside 3σ", "WARN within 0.5 s"), because replays never reproduce a run exactly: Gazebo's real-time factor varies, and slides and spins diverge.
 
-**Register.** Status: ⏳ not automated yet · ✅ automated · ❌ known failure (the test is marked expected-fail until fixed).
+**Deferring a manual check.** A PR can merge before its manual checks are done: each deferred check gets a GitHub issue labelled [`manual-validation`](https://github.com/gotbordom/rc-racer/issues?q=label%3Amanual-validation) that references the PR, so it shows on the PR's timeline and stays open after the merge. Close the issue when the check is done, and update its row here. [Open manual checks](https://github.com/gotbordom/rc-racer/issues?q=is%3Aopen+label%3Amanual-validation) is the to-do list.
 
-| ID | Case | Found / checked | Requirement | Level | Status |
-| --- | --- | --- | --- | --- | --- |
-| VAL-001 | Turbo (3 m/s) straight and hard stop, forward and reverse: no false slip, speed tracks the wheel, settles to 0 | Manual pass 2026-11-21 (μ 1.0) | REQ-GNC-002, -005 | Scenario (μ 1.0 and 0.5) | ⏳ |
-| VAL-002 | Reverse with turns: heading within 1° of truth, arrows the way the car faces | Manual pass 2026-11-17 | REQ-GNC-002 | Scenario | ⏳ |
-| VAL-003 | Full-lock circles at normal speed, both ways: geometry at full lock, IMU lever arm, **no false yaw-rate slip** at the steering limit (margin `slip.yaw_rate_margin`, TBD) | Manual, to do | REQ-GNC-002, -005 | Scenario | ⏳ |
-| VAL-004 | Full-lock turbo at μ 0.5: the car slides or spins. WARN on oversteer, recovers to OK, never stuck; measure the position error | Manual, to do | REQ-GNC-005 | Scenario (criteria set from the first runs) | ⏳ |
-| VAL-005 | Full-throttle launch at μ 0.5: the wheel spins up ahead of the body. WARN within 0.5 s, estimate follows the IMU, back to OK | Manual pass 2026-11-21 (0.03 m error over 5.9 m) | REQ-GNC-005 | Scenario | ⏳ |
-| VAL-006 | Braking from 3 m/s at μ 0.5: the car slides on faster than the wheels. Should be detected | Found 2026-11-21: **not detected** (spec Open Item 5) | REQ-GNC-005 | Scenario + unit | ❌ |
-| VAL-007 | Driving into an obstacle (the bench): slip ends via the safety nets, no getting stuck; impact itself not seen (DEV-07) | Manual 2026-11-17 | REQ-GNC-005 | Unit ✅ (`CrashSpinDownIsDetected`, `CrashTheImuMissedEndsWhenStopped`); recording | ⏳ |
-| VAL-008 | Covariance ellipse grows while driving | Manual, to do | REQ-GNC-006 | Unit ✅ (`CovarianceGrowsWithoutUpdates`); L2 assertion | ⏳ |
-| VAL-009 | `/odom` speed against `/sim/truth/wheel_odom`: no lag or bias | Recorder log 2026-11-21 | REQ-GNC-002 | L2 assertion | ⏳ |
-| VAL-010 | `~/reset` while driving: back to the origin, covariance collapses | Manual pass 2026-11-17 | - | Launch ✅ (`test_4_reset_returns_to_origin`) | ✅ |
-| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | Launch | ⏳ |
-| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | Launch | ⏳ |
-| VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ |
-| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | Unit (`yaw_rate()`) | ⏳ |
-| VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | Manual | - |
+**Register.** *Automated:* ⏳ not yet · ✅ yes · ❌ known failure (the test is marked expected-fail until fixed). *Manual:* ✅ passed · 🕓 pending, with its issue · - not needed. *PR:* where the case was added or last changed.
+
+| ID | Case | Found / checked | Requirement | PR | Level | Automated | Manual |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VAL-001 | Turbo (3 m/s) straight and hard stop, forward and reverse: no false slip, speed tracks the wheel, settles to 0 | Manual pass 2026-11-21 (μ 1.0) | REQ-GNC-002, -005 | #1 | Scenario (μ 1.0 and 0.5) | ⏳ | 🕓 #2 |
+| VAL-002 | Reverse with turns: heading within 1° of truth, arrows the way the car faces | Manual pass 2026-11-17 | REQ-GNC-002 | #1 | Scenario | ⏳ | ✅ |
+| VAL-003 | Full-lock circles at normal speed, both ways: geometry at full lock, IMU lever arm, **no false yaw-rate slip** at the steering limit (margin `slip.yaw_rate_margin`, TBD) | Manual, to do | REQ-GNC-002, -005 | #1 | Scenario | ⏳ | 🕓 #2 |
+| VAL-004 | Full-lock turbo at μ 0.5: the car slides or spins. WARN on oversteer, recovers to OK, never stuck; measure the position error | Manual, to do | REQ-GNC-005 | #1 | Scenario (criteria set from the first runs) | ⏳ | 🕓 #2 |
+| VAL-005 | Full-throttle launch at μ 0.5: the wheel spins up ahead of the body. WARN within 0.5 s, estimate follows the IMU, back to OK | Manual pass 2026-11-21 (0.03 m error over 5.9 m) | REQ-GNC-005 | #1 | Scenario | ⏳ | ✅ |
+| VAL-006 | Braking from 3 m/s at μ 0.5: the car slides on faster than the wheels. Should be detected | Found 2026-11-21: **not detected** (spec Open Item 5) | REQ-GNC-005 | #1 | Scenario + unit | ❌ | - |
+| VAL-007 | Driving into an obstacle (the bench): slip ends via the safety nets, no getting stuck; impact itself not seen (DEV-07) | Manual 2026-11-17 | REQ-GNC-005 | #1 | Unit ✅ (`CrashSpinDownIsDetected`, `CrashTheImuMissedEndsWhenStopped`); recording | ⏳ | ✅ |
+| VAL-008 | Covariance ellipse grows while driving | Manual, to do | REQ-GNC-006 | #1 | Unit ✅ (`CovarianceGrowsWithoutUpdates`); L2 assertion | ⏳ | 🕓 #3 |
+| VAL-009 | `/odom` speed against `/sim/truth/wheel_odom`: no lag or bias | Recorder log 2026-11-21 | REQ-GNC-002 | #1 | L2 assertion | ⏳ | 🕓 #4 |
+| VAL-010 | `~/reset` while driving: back to the origin, covariance collapses | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_4_reset_returns_to_origin`) | ✅ | ✅ |
+| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | #1 | Launch | ⏳ | 🕓 #5 |
+| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | #1 | Launch | ⏳ | 🕓 #6 |
+| VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ | ✅ |
+| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1 | Unit (`yaw_rate()`) | ⏳ | 🕓 #7 |
+| VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |
 
 ---
 

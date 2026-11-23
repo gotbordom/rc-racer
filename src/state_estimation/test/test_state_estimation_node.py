@@ -17,9 +17,13 @@ Validates:
   - ~/reset puts the estimate back at the origin
   - Stale wheel odometry is WARN, stale IMU is ERROR, and /odom keeps
     publishing with growing covariance (ICD-SNS-GNC §5, spec §4)
+  - deactivate stops /odom with STALE "inactive", and activate restarts
+    odom at the car (SDP §3.6 VAL-011)
+  - motion_model 'tank' fails configure naming the parameter, and
+    'unicycle' configures and runs (REQ-GNC-007, SDP §3.6 VAL-012)
 
 Characteristics:
-  - ~20 s, no simulator
+  - ~30 s, no simulator
 
 CI/CD: Every push (colcon test)
 """
@@ -39,9 +43,11 @@ from ament_index_python.packages import get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from lifecycle_msgs.msg import State
-from lifecycle_msgs.srv import GetState
+from lifecycle_msgs.msg import State, Transition
+from lifecycle_msgs.srv import ChangeState, GetState
 from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+from rcl_interfaces.srv import SetParameters
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.time import Time
 from sensor_msgs.msg import Imu
@@ -196,6 +202,37 @@ class TestStateEstimationNode(unittest.TestCase):
         self.assertTrue(future.done(), f'{client.srv_name} timed out')
         return future.result()
 
+    def get_state(self):
+        """Return the node's lifecycle state."""
+        client = self.node.create_client(GetState, '/state_estimation/get_state')
+        return self.call(client, GetState.Request()).current_state
+
+    def transition(self, transition_id):
+        """Request a lifecycle transition; return whether it succeeded."""
+        client = self.node.create_client(ChangeState, '/state_estimation/change_state')
+        request = ChangeState.Request()
+        request.transition.id = transition_id
+        return self.call(client, request).success
+
+    def wait_for_state(self, state_id, timeout=TIMEOUT_S):
+        """Wait for the node to reach a lifecycle state."""
+        deadline = time.monotonic() + timeout
+        state = self.get_state()
+        while state.id != state_id and time.monotonic() < deadline:
+            time.sleep(0.2)
+            state = self.get_state()
+        self.assertEqual(state.id, state_id, state.label)
+
+    def set_motion_model(self, model):
+        """Set the motion_model parameter (read at configure)."""
+        client = self.node.create_client(SetParameters, '/state_estimation/set_parameters')
+        request = SetParameters.Request()
+        request.parameters = [Parameter(
+            name='motion_model',
+            value=ParameterValue(type=ParameterType.PARAMETER_STRING, string_value=model))]
+        result = self.call(client, request).results[0]
+        self.assertTrue(result.successful, result.reason)
+
     # -- tests -----------------------------------------------------------------
 
     def test_1_active_and_stale_until_inputs_arrive(self):
@@ -269,6 +306,55 @@ class TestStateEstimationNode(unittest.TestCase):
         self.assertGreater(len(msgs), 0.8 * PUBLISH_RATE)
         self.assertGreater(msgs[-1].pose.covariance[0], msgs[0].pose.covariance[0])
         self.assertGreater(msgs[-1].twist.covariance[0], msgs[0].twist.covariance[0])
+
+    def test_7_deactivate_stops_odom_and_is_stale(self):
+        """VAL-011: deactivate stops /odom; health is STALE "inactive"."""
+        type(self).send_imu = True
+        type(self).send_wheel = True
+        self.wait_for_diagnostic(DiagnosticStatus.OK)
+        time.sleep(1.0)  # drive away from the odom origin
+        self.assertTrue(self.transition(Transition.TRANSITION_DEACTIVATE))
+        self.wait_for_state(State.PRIMARY_STATE_INACTIVE)
+        self.wait_for_diagnostic(DiagnosticStatus.STALE, 'inactive')
+        start = time.monotonic()
+        time.sleep(1.0)
+        self.assertEqual(self.odom_since(start), [])
+
+    def test_8_activate_restarts_odom_at_the_car(self):
+        """VAL-011: activate restarts odom at the car, and health is OK again."""
+        with self.lock:
+            before = self.odom[-1][1].pose.pose.position
+        self.assertGreater(before.x, 0.5)  # odom had left its origin
+        start = time.monotonic()
+        self.assertTrue(self.transition(Transition.TRANSITION_ACTIVATE))
+        self.wait_for_diagnostic(DiagnosticStatus.OK)
+        first = self.odom_since(start)[0].pose.pose.position
+        self.assertLess(abs(first.x), 0.2)
+        self.assertLess(abs(first.y), 0.2)
+
+    def test_9_motion_model_tank_fails_unicycle_runs(self, proc_output):
+        """REQ-GNC-007, VAL-012: 'tank' fails configure; 'unicycle' runs."""
+        self.assertTrue(self.transition(Transition.TRANSITION_DEACTIVATE))
+        self.assertTrue(self.transition(Transition.TRANSITION_CLEANUP))
+        self.wait_for_state(State.PRIMARY_STATE_UNCONFIGURED)
+
+        self.set_motion_model('tank')
+        self.assertFalse(self.transition(Transition.TRANSITION_CONFIGURE))
+        proc_output.assertWaitFor("unknown motion_model 'tank'", timeout=TIMEOUT_S)
+        self.assertEqual(self.get_state().id, State.PRIMARY_STATE_UNCONFIGURED)
+
+        # The launch file's autostart activates the node after any configure.
+        self.set_motion_model('unicycle')
+        self.assertTrue(self.transition(Transition.TRANSITION_CONFIGURE))
+        self.wait_for_state(State.PRIMARY_STATE_ACTIVE)
+        status = self.wait_for_diagnostic(DiagnosticStatus.OK)
+        values = {v.key: v.value for v in status.values}
+        self.assertEqual(values['motion_model'], 'unicycle')
+        start = time.monotonic()
+        time.sleep(1.0)
+        last = self.odom_since(start)[-1]
+        self.assertAlmostEqual(last.twist.twist.linear.x, SPEED, delta=0.05)
+        self.assertGreater(last.pose.pose.position.x, 0.5)
 
 
 @launch_testing.post_shutdown_test()

@@ -546,8 +546,8 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 | VAL-008 | Covariance ellipse grows while driving | Manual, to do | REQ-GNC-006 | #1 | Unit ✅ (`CovarianceGrowsWithoutUpdates`); L2 assertion | ⏳ | 🕓 #3 |
 | VAL-009 | `/odom` speed against `/sim/truth/wheel_odom`: no lag or bias | Recorder log 2026-11-21 | REQ-GNC-002 | #1 | L2 assertion | ⏳ | 🕓 #4 |
 | VAL-010 | `~/reset` while driving: back to the origin, covariance collapses | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_4_reset_returns_to_origin`) | ✅ | ✅ |
-| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | #1 | Launch | ⏳ | 🕓 #5 |
-| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | #1 | Launch | ⏳ | 🕓 #6 |
+| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | #1, 2.3 | Launch ✅ (`test_7_deactivate_stops_odom_and_is_stale`, `test_8_activate_restarts_odom_at_the_car`) | ✅ | 🕓 #5 |
+| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | #1, 2.3 | Launch ✅ (`test_9_motion_model_tank_fails_unicycle_runs`) | ✅ | 🕓 #6 |
 | VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ | ✅ |
 | VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1 | Unit (`yaw_rate()`) | ⏳ | 🕓 #7 |
 | VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |

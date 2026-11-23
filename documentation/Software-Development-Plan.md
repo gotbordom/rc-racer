@@ -551,7 +551,7 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 | VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ | ✅ |
 | VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1, 2.3 | Unit ✅ (`test_steering_relay.py`) | ✅ | 🕓 #7 |
 | VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |
-| VAL-016 | Drive forward, then straight back: the covariance ellipse shrinks for a while. Expected from the scale-error term (it scales with distance from the odom origin) if the scale error is the same both ways; check the true error shrinks too, or the covariance is overconfident on the way back | Owner, manual 2026-11-22 (#8) | REQ-GNC-006 | #1 | Unit + scenario | ⏳ | - |
+| VAL-016 | Drive forward, then straight back: the covariance ellipse shrinks for a while. Expected from the scale-error term (it scales with distance from the odom origin) if the scale error is the same both ways; check the true error shrinks too, or the covariance is overconfident on the way back | Owner, manual 2026-11-22 (#8). Unit tests 2026-11-23: hypothesis confirmed; the true error shrinks with it, and a scale that differs in reverse stays inside 3σ | REQ-GNC-006 | #1, 2.3 | Unit ✅ (`OutAndBackCovarianceShrinksThenGrows`, `OutAndBackScaleErrorCancelsAsTheCovarianceSays`, `OutAndBackDifferentScaleInReverseIsCovered`); scenario | ⏳ | - |
 
 ---
 

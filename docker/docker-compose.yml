@@ -82,6 +82,57 @@ services:
         world:=${SIM_WORLD:-practice_course.world}
 
   # ===========================================================================
+  # Manual driving: sim GUI + state_estimation + RViz + Xbox controller
+  # ===========================================================================
+  # docker compose -f docker/docker-compose.yml up sim-manual
+  # Hold LB, left stick = speed, right stick = turn, RB = turbo.
+  # Keyboard instead: docker exec -it rc-racer-sim-manual bash -c
+  #   "source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard"
+  sim-manual:
+    image: rc-racer-simulation:latest
+    container_name: rc-racer-sim-manual
+    hostname: rc-racer-simulation
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # SDL's udev lookup finds no controllers in the container (the host's
+      # udev data lacks the joystick tag here); scan /dev/input instead
+      - SDL_JOYSTICK_DISABLE_UDEV=1
+      # Controller mappings missing from Humble's SDL (2.0.20). Without one,
+      # SDL guesses a layout and scrambles buttons and axes (e.g. a stick
+      # read as a half-range trigger). Format: GUID,name,mapping; one per
+      # line. GUIDs come from `ros2 run joy joy_enumerate_devices`.
+      #   Xbox One Elite 2, Bluetooth, firmware 0x0523 (the entries for
+      #   0x0513/0x0517 in SDL_GameControllerDB; raw layout checked by hand)
+      - "SDL_GAMECONTROLLERCONFIG=050000005e040000220b000023050000,Xbox One Elite 2 Controller,a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b6,leftstick:b13,lefttrigger:a5,leftx:a0,lefty:a1,rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4,platform:Linux,"
+    volumes:
+      # Live sources for the packages under test (built on start)
+      - ../src:/ros2_ws/src:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/dri:/dev/dri
+      # Game controller: bind /dev/input (not --device) so a pad plugged in
+      # after start still appears
+      - /dev/input:/dev/input
+    device_cgroup_rules:
+      - "c 13:* rmw"  # input devices (js*, event*)
+    networks:
+      - ros-network
+    command:
+      - bash
+      - -c
+      - >
+        colcon build --packages-up-to rc_racer_bringup &&
+        source install/setup.bash &&
+        ros2 launch rc_racer_bringup sim_manual.launch.py
+        world:=${SIM_WORLD:-practice_course.world}
+        tire_mu:=${SIM_TIRE_MU:-0.5}
+
+  # ===========================================================================
   # Development Container (Building & Testing)
   # ===========================================================================
   # Interactive development - builds and runs your ROS 2 nodes

@@ -24,6 +24,24 @@ This document outlines the software development plan for the RC Racer autonomous
 | **Phase 4: Control**     | ⏳ Planned     | Motor control, safety systems (first: fix sim steering lag, §4.2) |
 | **Phase 5: Integration** | ⏳ Planned     | Full system integration, hardware deployment |
 
+**Features.** Each phase is split into numbered features, `<phase>.<feature>`. A feature is one component or one piece of work that is developed on one branch and merged when it is done. Features are numbered in the order they are planned. Add new ones at the end of their phase, and never renumber a feature once a branch uses its number.
+
+| Feature | Name | Element | Status |
+| --- | --- | --- | --- |
+| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models, filter, ROS node and L2 sim test done (0.37 % drift in sim at `tire_mu` 0.5); manual checks in PR #1 |
+| 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
+| 2.3 | `validation-scenarios` | TST | ⏳ Planned: turn the manual validation cases into automated tests (§3.6). Next after PR #1 |
+| 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
+| 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
+| 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |
+| 4.1 | `sim-steering-lag` | TST (DEV-04) | ⏳ Planned |
+| 4.2 | `motor-controller` | VEH.ACT.MC | ⏳ Planned |
+| 4.3 | `safety` | VEH.FDR.SAF | ⏳ Planned |
+
+Phase 1 was completed before features were numbered. Its branch, `feature/simulation`, keeps its name. Phase 5 features will be numbered when Phase 5 is planned in detail.
+
+**Branch names.** A feature branch is named `feature/<phase>.<feature>-<name>`, using the number and name from the table, e.g. `feature/2.1-state-estimation`. Merged feature branches are kept for later review.
+
 ### 1.2 Package Structure
 
 ```
@@ -493,6 +511,46 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 - **Headless:** Gazebo server mode for CI (no GUI)
 - **Results:** Mounted volume for test output
 
+### 3.6 Validation Cases
+
+Hands-on checks in the sim (driving by hand, §5.6) find problems that the planned tests miss. Each check, and each problem it finds, becomes a **validation case** in the register below, so every one ends up as an automated test at some level. Feature **2.3 `validation-scenarios`** builds the tooling and automates the cases found so far. After that, the register is a living list: add a row for every new manual check or finding, in any feature, and automate it in that feature or note where it will be.
+
+**Test levels**, cheapest first. Use the cheapest level that can show the problem.
+
+| Level | Where | Use for |
+| --- | --- | --- |
+| Unit | The component's logic tests (no ROS, §2) | Behaviour of the algorithm: slip logic, model geometry. A fix found in a scenario gets a unit test here too |
+| Launch | The component's launch test (no Gazebo) | Node behaviour: lifecycle, parameters, services, diagnostics, TF publishers |
+| Scenario | `test_gnc_state_estimation_maneuvers` (planned, 2.3): one scenario file per case in `test/system/scenarios/`, with `tire_mu`, a scripted command sequence (time, speed, steering fraction) and pass criteria | Driving cases with simple, well-defined inputs |
+| Recording | The same test, driven by a recorded manual run (`make record`, planned in 2.3: `/cmd_vel` after the steering relay, stamped with sim time, converted to a scenario file) | Messy, human-shaped driving that is hard to script |
+| L2 | The component's L2 sim test | Properties over a whole drive (drift, covariance) |
+| Manual | This register only | Visual checks that need a person (RViz) |
+
+**Scenario and recording tests check properties, not a trajectory** ("estimate within X of truth", "≥ 95 % inside 3σ", "WARN within 0.5 s"), because replays never reproduce a run exactly: Gazebo's real-time factor varies, and slides and spins diverge.
+
+**Deferring a manual check.** A PR can merge before its manual checks are done: each deferred check gets a GitHub issue labelled [`manual-validation`](https://github.com/gotbordom/rc-racer/issues?q=label%3Amanual-validation) that references the PR, so it shows on the PR's timeline and stays open after the merge. Close the issue when the check is done, and update its row here. [Open manual checks](https://github.com/gotbordom/rc-racer/issues?q=is%3Aopen+label%3Amanual-validation) is the to-do list.
+
+**Register.** *Automated:* ⏳ not yet · ✅ yes · ❌ known failure (the test is marked expected-fail until fixed). *Manual:* ✅ passed · 🕓 pending, with its issue · - not needed. *PR:* where the case was added or last changed.
+
+| ID | Case | Found / checked | Requirement | PR | Level | Automated | Manual |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VAL-001 | Turbo (3 m/s) straight and hard stop, forward and reverse: no false slip, speed tracks the wheel, settles to 0 | Manual pass 2026-11-21 (μ 1.0) | REQ-GNC-002, -005 | #1 | Scenario (μ 1.0 and 0.5) | ⏳ | 🕓 #2 |
+| VAL-002 | Reverse with turns: heading within 1° of truth, arrows the way the car faces | Manual pass 2026-11-17 | REQ-GNC-002 | #1 | Scenario | ⏳ | ✅ |
+| VAL-003 | Full-lock circles at normal speed, both ways: geometry at full lock, IMU lever arm, **no false yaw-rate slip** at the steering limit (margin `slip.yaw_rate_margin`, TBD) | Manual, to do | REQ-GNC-002, -005 | #1 | Scenario | ⏳ | 🕓 #2 |
+| VAL-004 | Full-lock turbo at μ 0.5: the car slides or spins. WARN on oversteer, recovers to OK, never stuck; measure the position error | Manual, to do | REQ-GNC-005 | #1 | Scenario (criteria set from the first runs) | ⏳ | 🕓 #2 |
+| VAL-005 | Full-throttle launch at μ 0.5: the wheel spins up ahead of the body. WARN within 0.5 s, estimate follows the IMU, back to OK | Manual pass 2026-11-21 (0.03 m error over 5.9 m) | REQ-GNC-005 | #1 | Scenario | ⏳ | ✅ |
+| VAL-006 | Braking from 3 m/s at μ 0.5: the car slides on faster than the wheels. Should be detected | Found 2026-11-21: **not detected** (spec Open Item 5) | REQ-GNC-005 | #1 | Scenario + unit | ❌ | - |
+| VAL-007 | Driving into an obstacle (the bench): slip ends via the safety nets, no getting stuck; impact itself not seen (DEV-07) | Manual 2026-11-17 | REQ-GNC-005 | #1 | Unit ✅ (`CrashSpinDownIsDetected`, `CrashTheImuMissedEndsWhenStopped`); recording | ⏳ | ✅ |
+| VAL-008 | Covariance ellipse grows while driving | Manual, to do | REQ-GNC-006 | #1 | Unit ✅ (`CovarianceGrowsWithoutUpdates`); L2 assertion | ⏳ | 🕓 #3 |
+| VAL-009 | `/odom` speed against `/sim/truth/wheel_odom`: no lag or bias | Recorder log 2026-11-21 | REQ-GNC-002 | #1 | L2 assertion | ⏳ | 🕓 #4 |
+| VAL-010 | `~/reset` while driving: back to the origin, covariance collapses | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_4_reset_returns_to_origin`) | ✅ | ✅ |
+| VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | #1 | Launch | ⏳ | 🕓 #5 |
+| VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | #1 | Launch | ⏳ | 🕓 #6 |
+| VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ | ✅ |
+| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1 | Unit (`yaw_rate()`) | ⏳ | 🕓 #7 |
+| VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |
+| VAL-016 | Drive forward, then straight back: the covariance ellipse shrinks for a while. Expected from the scale-error term (it scales with distance from the odom origin) if the scale error is the same both ways; check the true error shrinks too, or the covariance is overconfident on the way back | Owner, manual 2026-11-22 (#8) | REQ-GNC-006 | #1 | Unit + scenario | ⏳ | - |
+
 ---
 
 ## 4. Simulation Environment (Phase 1)
@@ -547,7 +605,9 @@ Based on Traxxas Slash hardware specifications from `documentation/Rc-Car-Design
 
 Front wheels are mounted on steering hinges (revolute about Z); the Gazebo `AckermannSteering` system computes the inner/outer steering angles and rear wheel speed from a `Twist` command.
 
-**Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction (`mu = 1.0` on the tires). Not modelled: tire slip/deformation, suspension, motor torque curves, or terrain-dependent friction.
+**Physics:** Gazebo's DART engine handles gravity, rigid-body dynamics (from each link's mass/inertia), contacts and Coulomb friction. Not modelled: tire deformation, suspension, motor torque curves, or terrain-dependent friction.
+
+**Tyre friction** is the `tire_mu` launch argument (`make sim MU=...`), default **0.5**: dirt or dry grass, the low-grip end of the usual RoboMagellan surfaces (REQ-SYS-009). Dry pavement is about 0.8, and wet grass about 0.3. The ground plane keeps the SDF default (1.0), and Gazebo uses the lower of the two. Only the rear wheels drive, so grip caps the acceleration at about **3.3 × `tire_mu` m/s²** (measured 2026-11-21: 1.7 m/s² at 0.5, 0.6 m/s² at 0.2). The drive ramps the wheel speed at 3 m/s², so below about 0.9 a full-throttle launch spins the rear wheels: the wheel reaches the commanded speed in 1 s and the body follows more slowly. Use a low value (for example `MU=0.2`) to exercise slip handling.
 
 Wheel joints carry only bearing-level losses (`damping = 0.001`, `friction = 0`). With 33.7 mm wheels, larger values become tens of newtons of drag at the tire and the free-rolling front wheels skid instead of rolling (the car crawls and slides sideways instead of turning). The smoke test checks ground-truth speed and turn rate against the command to catch this.
 
@@ -845,6 +905,36 @@ docker compose up -d dev
 ros2 launch gazebo_ros gazebo.launch.py
 ```
 
+**Driving the car by hand** (`rc_racer_bringup/launch/sim_manual.launch.py`): Gazebo GUI, `state_estimation` on sim time, and RViz with the TF tree, the car, and `/odom` with its 3σ covariance ellipse.
+
+```bash
+make sim                     # = xhost +local:docker && docker compose ... up sim-manual
+make sim WORLD=empty_course.world
+make sim MU=0.2               # low-grip tyres (default 0.5), see §4.2
+```
+
+| Control | Xbox controller (`config/xbox_teleop.yaml`) |
+| --- | --- |
+| Enable (deadman) | Hold **LB**. Releasing it sends one zero command, which stops the car |
+| Speed | Left stick up / down (1 m/s full stick) |
+| Steer | Right stick left / right: a steering angle, like an RC transmitter. Full stick is full lock (±0.52 rad) at any speed, and the wheels follow the stick in reverse too (`steering_relay` turns it into the matching yaw rate on `/cmd_vel`) |
+| Turbo | Hold **RB** as well (3 m/s) |
+
+The controller is read by `joy`'s `game_controller_node`, which uses SDL's standard gamepad layout, so any pad SDL knows works the same over USB or Bluetooth. Plug it in before or after starting. With `make sim` running, in a second terminal:
+
+| Command | Does |
+| --- | --- |
+| `make joy-echo` | Show what the pad sends on `/joy` |
+| `make joy-devices` | List the pads SDL sees, with their GUIDs |
+| `make joy-sdl-map` | Pad drives wrongly (scrambled buttons, a stick that can't centre)? SDL has no mapping for it. This measures the raw pad and prints a mapping line for `SDL_GAMECONTROLLERCONFIG` in the `sim-manual` service. The Xbox One Elite 2 over Bluetooth is already there |
+| `make joy-calibrate` | Quick fix: detect the buttons and axes and apply them to teleop until it restarts |
+| `make keyboard` | Drive with the keyboard instead |
+| `make se-reset`, `se-deactivate`, `se-activate`, `se-diagnostics` | `state_estimation` service, lifecycle and health |
+| `make se-watch` | Stream `state_estimation`'s health, one line per report. A slip WARN shows for only one report (about 1 s), so watch here rather than with `se-diagnostics`; a rise in `slip_events` is a slip even if its WARN scrolled past |
+| `make shell` | Shell in the sim container with ROS sourced |
+
+`make` on its own lists every target.
+
 ### 5.7 Container Architecture
 
 | Container       | Purpose                 | Base Image                 |
@@ -1018,6 +1108,8 @@ Migrate to microservices when:
 ---
 
 ## 6. Build & Test Commands
+
+From the host, the `Makefile` wraps the Docker commands: `make test` (all unit and component tests plus linters, in the dev image; `PKG=<package>` for one package), `make test-system` (the Gazebo system tests; `FILTER=<regex>`), and `make images` (rebuild the images after a Dockerfile change). Run `make` to list them all.
 
 > **Note:** All commands below are run **inside the Docker container** unless otherwise specified.
 

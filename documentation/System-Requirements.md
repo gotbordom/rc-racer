@@ -146,7 +146,7 @@ Written just in time, before each subsystem's components are designed.
 | --- | --- | --- | --- |
 | TBD-001 | REQ-SYS-004 | Maximum allowed cone displacement on contact | Check event judging practice; test cone push in sim |
 | TBD-002 | REQ-SYS-005 | Maximum total path length | Estimate from past course maps (e.g. 2-3x straight-line) |
-| TBD-003 | REQ-GNC-002 | Allowed odometry drift | Analysis of encoder + IMU error; tune in sim |
+| TBD-003 | REQ-GNC-002 | Allowed odometry drift. **Placeholder: 2 % (TBR)**, accepted 2026-11-22 for merging 2.1 | **Where 2 % came from:** an engineering guess, not derived from the mission: the sim L2 test measures 0.37 % over ~100 m at `tire_mu` 0.5 (0.13 % at 1.0), plus margin for real tyres, terrain and calibration (1 % scale error assumed). It is in line with published fused wheel + IMU dead reckoning outdoors (about 1.8–2.4 % of distance). **How it will be set:** from the mission. Drift between camera fixes must keep the next cone inside the window where the camera can still find it, so the limit is about (cone search window) ÷ (longest leg between fixes). For example, ±2 m over a 100 m leg gives 2 %. Set it once 2.2 `object-detection` measures the camera's cone-detection range (with TBD-004), and confirm on hardware (Phase 5) |
 | TBD-004 | REQ-GNC-003 | Required global position accuracy | No GNSS (ISSUE-001): set from dead-reckoning drift (TBD-003) over the course length (REQ-SYS-005) and the camera's landmark detection range |
 | TBD-005 | REQ-GNC-004 | Longest GNSS outage to ride through | Deferred with REQ-GNC-004 until a GNSS receiver is added (ISSUE-001) |
 | TBR-001 | REQ-SYS-034 | Battery energy margin (proposed 30%) | Battery stress test |

@@ -58,7 +58,9 @@ docker run --rm \
     "$SIM_IMAGE" \
     bash -c '
         set -e
-        colcon build --packages-up-to rc_racer_system_tests
+        # --symlink-install as in the nightly, so a script missing its
+        # executable bit fails here too (the installed file is a symlink)
+        colcon build --symlink-install --packages-up-to rc_racer_system_tests
         source install/setup.bash
         status=0
         colcon test --packages-select rc_racer_system_tests \

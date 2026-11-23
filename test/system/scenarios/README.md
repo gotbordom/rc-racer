@@ -14,6 +14,8 @@ steps:                      # open-loop commands through steering_relay, 20 Hz
     speed_end: 3.0          # optional: ramp linearly to this by the end
     steer: 0.0              # fraction of full lock, -1 (right) to +1 (left)
     expect_slip: true       # optional: a slip event must be counted in this step
+    expect_slip_within: 0.5 # optional: ... and within this many s of its start
+    min_consistent_fraction: 0.95   # optional: inside 3 sigma during this step
 checks:                     # every check is optional
   max_position_error: 0.3   # m, against truth, whole run
   final_position_error: 0.2 # m
@@ -24,10 +26,14 @@ checks:                     # every check is optional
   ends_ok: true             # last health report is OK
   settles: true             # speed estimate within 0.05 m/s of 0 at the end
   covariance_dip: {min_drop: 0.03}  # out and back: variance falls, then grows
-expected_fail: "why"        # known failure: passes while a check fails
+expected_fail:              # known failure: passes while this check, and only it, fails
+  reason: "why, and the open item"
+  failing: "slip in step 2 detected"   # text of the failure it expects
 ```
 
-After the last step the car is stopped and recorded for 1 s more. A
+After the last step the car is stopped and recorded for 1 s more.
+state_estimation reports health at 10 Hz in these runs (1 Hz normally), so
+slip detection is timed to about 0.1 s. A
 `/odom` jump of more than 0.1 m between samples always fails.
 
 The car spawns at the origin facing +x. The world is a flat 100 x 100 m

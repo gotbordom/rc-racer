@@ -16,9 +16,14 @@ Gazebo's ground truth (/sim/truth/poses), and the scenario's checks are
 applied. Checks test properties (error bounds, covariance honesty, slip
 seen or not, health), not an exact trajectory.
 
-A scenario marked expected_fail documents a known failure: the test
-passes while at least one check fails, and fails once all pass, so the
-mark gets removed when the bug is fixed.
+state_estimation reports health at 10 Hz here instead of 1 Hz
+(diagnostic_updater.period, set for this test only), so slip detection can
+be timed to about 0.1 s.
+
+A scenario marked expected_fail documents a known failure. It names the
+check that fails (expected_fail.failing, matched against the failure
+text): the test passes while that check fails and nothing else does, and
+fails once it passes, so the mark gets removed when the bug is fixed.
 
 Characteristics:
   - SLOW: ~1 minute each (Gazebo startup + the scenario's sim time)
@@ -28,6 +33,7 @@ CI/CD: Nightly
 
 import math
 import os
+import tempfile
 import unittest
 
 import launch
@@ -45,9 +51,13 @@ from se_sim import compare, distance_travelled, SimRecorder
 
 COMMAND_PERIOD_S = 0.05     # sim; 20 Hz commands, as the pad sends
 STOP_S = 1.0                # sim; keep recording after the last step
-DIAGNOSTICS_LAG_S = 1.5     # sim; health is reported at 1 Hz
+DIAGNOSTICS_PERIOD_S = 0.1  # sim; health report period in these runs
+DIAGNOSTICS_LAG_S = 1.5 * DIAGNOSTICS_PERIOD_S
 MAX_STEP = 0.1              # m between consecutive /odom samples (no jumps)
-STEP_KEYS = {'duration', 'speed', 'speed_end', 'steer', 'expect_slip'}
+STEP_KEYS = {
+    'duration', 'speed', 'speed_end', 'steer', 'expect_slip', 'expect_slip_within',
+    'min_consistent_fraction',
+}
 CHECK_KEYS = {
     'max_position_error', 'final_position_error', 'max_yaw_error_deg',
     'min_consistent_fraction', 'slip_events', 'never_error', 'ends_ok', 'settles',
@@ -71,6 +81,9 @@ def load_scenario(path):
     unknown = set(scenario['checks']) - CHECK_KEYS
     if unknown:
         raise ValueError(f'{path}: unknown checks {unknown}')
+    expected_fail = scenario.get('expected_fail')
+    if expected_fail is not None and set(expected_fail) != {'reason', 'failing'}:
+        raise ValueError(f'{path}: expected_fail needs reason and failing')
     return scenario
 
 
@@ -81,6 +94,20 @@ NAME = os.path.splitext(os.path.basename(SCENARIO_FILE))[0]
 RESULTS_DIR = os.path.join('test_results', 'rc_racer_system_tests')
 TRACE_FILE = os.path.join(RESULTS_DIR, f'scenario_{NAME}_trace.csv')
 HEALTH_FILE = os.path.join(RESULTS_DIR, f'scenario_{NAME}_health.csv')
+
+
+def params_with_fast_diagnostics():
+    """Write state_estimation's default params plus a 10 Hz health period; return the path."""
+    default = os.path.join(
+        get_package_share_directory('state_estimation'), 'config', 'state_estimation.yaml')
+    with open(default) as f:
+        params = yaml.safe_load(f)
+    params['state_estimation']['ros__parameters']['diagnostic_updater.period'] = \
+        DIAGNOSTICS_PERIOD_S
+    out = tempfile.NamedTemporaryFile('w', suffix='.yaml', prefix='se_params_', delete=False)
+    with out:
+        yaml.safe_dump(params, out)
+    return out.name
 
 
 @launch_testing.markers.keep_alive
@@ -99,7 +126,10 @@ def generate_test_description():
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('state_estimation'), 'launch',
             'state_estimation.launch.py')),
-        launch_arguments={'use_sim_time': 'true'}.items(),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'params_file': params_with_fast_diagnostics(),
+        }.items(),
     )
     steering_relay = launch_ros.actions.Node(
         package='rc_racer_bringup',
@@ -132,6 +162,13 @@ def drive(sim, steps):
     sim.command(0.0, 0.0)
     sim.sleep_sim(STOP_S)
     return windows
+
+
+def first_slip_after(health, start):
+    """Return the sim time of the first report counting a new slip at or after start."""
+    before = [h.slip_events for h in health if h.t < start]
+    baseline = before[-1] if before else 0
+    return next((h.t for h in health if h.t >= start and h.slip_events > baseline), None)
 
 
 def slip_events_between(health, start, end):
@@ -194,10 +231,24 @@ def run_checks(checks, steps, windows, samples, health):
         if 'min' in bounds:
             check(total_slips >= bounds['min'], f'{total_slips} slip events (min {bounds["min"]})')
     for i, (step, (start, end)) in enumerate(zip(steps, windows)):
-        if step.get('expect_slip'):
-            n = slip_events_between(health, start, end + DIAGNOSTICS_LAG_S)
-            metrics.append(f'slip events in step {i}    {n:8d}')
-            check(n > 0, f'no slip detected in step {i} ({start:.1f}-{end:.1f} s)')
+        if step.get('expect_slip') or 'expect_slip_within' in step:
+            first = first_slip_after(health, start)
+            seen = first is not None and first <= end + DIAGNOSTICS_LAG_S
+            metrics.append(f'slip seen in step {i}      '
+                           + (f'{first - start:8.2f} s after it began' if seen else '      no'))
+            check(seen, f'no slip in step {i} detected ({start:.1f}-{end:.1f} s)')
+            if seen and 'expect_slip_within' in step:
+                limit = step['expect_slip_within']
+                check(first - start <= limit + DIAGNOSTICS_LAG_S,
+                      f'slip in step {i} detected {first - start:.2f} s after it began '
+                      f'(limit {limit} s)')
+        if 'min_consistent_fraction' in step:
+            during = [s for s in samples if start <= s.t <= end]
+            fraction = sum(s.consistent for s in during) / max(len(during), 1)
+            metrics.append(f'inside 3-sigma, step {i}  {100.0 * fraction:8.1f} %')
+            limit = step['min_consistent_fraction']
+            check(fraction >= limit, f'step {i}: only {100.0 * fraction:.1f} % inside 3 sigma '
+                  f'(< {100.0 * limit:.0f} %)')
     if checks.get('never_error'):
         check(not errors, f'state_estimation reported ERROR: {errors[:3]}')
     if checks.get('ends_ok'):
@@ -273,13 +324,15 @@ class TestScenario(unittest.TestCase):
         print(f'\n  {SCENARIO["id"]} {NAME}: {SCENARIO["title"]} (tire_mu {SCENARIO["tire_mu"]})\n'
               + ''.join(f'  {m}\n' for m in metrics)
               + ''.join(f'  FAILED: {f}\n' for f in failures)
-              + (f'  expected to fail: {expected_fail}\n' if expected_fail else ''),
+              + (f'  expected to fail: {expected_fail["reason"]}\n' if expected_fail else ''),
               flush=True)
         if expected_fail:
-            self.assertTrue(failures, f'{SCENARIO["id"]} now passes: remove expected_fail '
-                            f'from {NAME}.yaml and update the register (SDP §3.6)')
-        else:
-            self.assertEqual(failures, [], f'{SCENARIO["id"]} {NAME}')
+            known = [f for f in failures if expected_fail['failing'] in f]
+            self.assertTrue(known, f'{SCENARIO["id"]} now passes '
+                            f'({expected_fail["failing"]!r}): remove expected_fail from '
+                            f'{NAME}.yaml and update the register (SDP §3.6)')
+            failures = [f for f in failures if f not in known]
+        self.assertEqual(failures, [], f'{SCENARIO["id"]} {NAME}')
 
 
 @launch_testing.post_shutdown_test()

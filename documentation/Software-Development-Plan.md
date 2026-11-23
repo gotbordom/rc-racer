@@ -32,7 +32,7 @@ This document outlines the software development plan for the RC Racer autonomous
 | --- | --- | --- | --- |
 | 2.1 | `state-estimation` | VEH.GNC.SE | 🔍 In validation: merged 2026-11-23 (PR #1); manual checks open: #2–#7 |
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
-| 2.3 | `validation-scenarios` | TST | ⏳ Planned: turn the manual validation cases into automated tests (§3.6). Next after PR #1 |
+| 2.3 | `validation-scenarios` | TST | 🚧 In progress: turn the manual validation cases into automated tests (§3.6) |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |

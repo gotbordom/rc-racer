@@ -26,9 +26,11 @@ This document outlines the software development plan for the RC Racer autonomous
 
 **Features.** Each phase is split into numbered features, `<phase>.<feature>`. A feature is one component or one piece of work that is developed on one branch and merged when it is done. Features are numbered in the order they are planned. Add new ones at the end of their phase, and never renumber a feature once a branch uses its number.
 
+**Status:** ⏳ Planned → 🚧 In progress (on its branch) → 🔍 In validation (merged, but some of its [`manual-validation`](https://github.com/gotbordom/rc-racer/issues?q=is%3Aopen+label%3Amanual-validation) issues are still open, §3.6) → ✅ Done (merged and every manual check closed).
+
 | Feature | Name | Element | Status |
 | --- | --- | --- | --- |
-| 2.1 | `state-estimation` | VEH.GNC.SE | 🚧 In progress: motion models, filter, ROS node and L2 sim test done (0.37 % drift in sim at `tire_mu` 0.5); manual checks in PR #1 |
+| 2.1 | `state-estimation` | VEH.GNC.SE | 🔍 In validation: merged 2026-11-23 (PR #1); manual checks open: #2–#7 |
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
 | 2.3 | `validation-scenarios` | TST | ⏳ Planned: turn the manual validation cases into automated tests (§3.6). Next after PR #1 |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |

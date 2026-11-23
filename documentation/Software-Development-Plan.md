@@ -549,7 +549,7 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 | VAL-011 | Lifecycle: `deactivate` stops `/odom` with STALE "inactive"; `activate` restarts at the car's current position | Manual, to do | - | #1, 2.3 | Launch ✅ (`test_7_deactivate_stops_odom_and_is_stale`, `test_8_activate_restarts_odom_at_the_car`) | ✅ | 🕓 #5 |
 | VAL-012 | `motion_model: unicycle` configures and runs; `tank` fails `configure` with a clear error | Manual, to do | REQ-GNC-007 | #1, 2.3 | Launch ✅ (`test_9_motion_model_tank_fails_unicycle_runs`) | ✅ | 🕓 #6 |
 | VAL-013 | TF tree `odom → base_footprint → base_link → sensors`; only `state_estimation` and `robot_state_publisher` publish `/tf` | Manual pass 2026-11-17 | - | #1 | Launch ✅ (`test_3_tf_published_by_this_node_only`); system check of the full tree | ⏳ | ✅ |
-| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1 | Unit (`yaw_rate()`) | ⏳ | 🕓 #7 |
+| VAL-014 | Pad steering: full stick is full lock at any speed, wheels follow the stick in reverse (`steering_relay`) | Added 2026-11-21, not driven yet | - | #1, 2.3 | Unit ✅ (`test_steering_relay.py`) | ✅ | 🕓 #7 |
 | VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |
 | VAL-016 | Drive forward, then straight back: the covariance ellipse shrinks for a while. Expected from the scale-error term (it scales with distance from the odom origin) if the scale error is the same both ways; check the true error shrinks too, or the covariance is overconfident on the way back | Owner, manual 2026-11-22 (#8) | REQ-GNC-006 | #1 | Unit + scenario | ⏳ | - |
 

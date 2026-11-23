@@ -79,7 +79,27 @@ if(BUILD_TESTING)
     launch/test_gnc_state_estimation_sim.launch.py
     TARGET test_gnc_state_estimation_sim
     TIMEOUT 900
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/support
   )
+
+  # ---------------------------------------------------------------------------
+  # Scenario Tests: validation cases (SDP §3.6)
+  # ---------------------------------------------------------------------------
+  # Validates: one scripted validation case per scenarios/<name>.yaml, each in
+  #            its own headless Gazebo (see scenarios/README.md)
+  # Timeout: Medium (Gazebo startup + under a minute of sim time)
+  #
+  file(GLOB SCENARIO_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/*.yaml)
+  foreach(scenario ${SCENARIO_FILES})
+    get_filename_component(name ${scenario} NAME_WE)
+    add_launch_test(
+      launch/test_gnc_state_estimation_scenario.launch.py
+      TARGET test_scenario_${name}
+      TIMEOUT 300
+      ENV SCENARIO_FILE=${scenario}
+      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/support
+    )
+  endforeach()
 
   # ---------------------------------------------------------------------------
   # System Test: Full Stack Simulation

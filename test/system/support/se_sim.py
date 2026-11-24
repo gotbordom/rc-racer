@@ -159,9 +159,11 @@ class Recording:
     __slots__ = ('history', 'odom', 'health', 'wheel', 'body')
 
     def __init__(self, history, odom, health, wheel, body):
-        """Truth [(t, pose)], odom [(stamp, Odometry)], [Health], wheel and body [(t, v)].
+        """
+        Keep what was recorded.
 
-        wheel is the true wheel speed, body the body's true forward speed:
+        Truth [(t, pose)], odom [(stamp, Odometry)], [Health], and wheel and
+        body [(t, v)]: wheel is the true wheel speed, body the body's true forward speed:
         they differ when the wheels slip.
         """
         self.history = history

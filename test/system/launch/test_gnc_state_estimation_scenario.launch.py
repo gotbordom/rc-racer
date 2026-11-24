@@ -184,10 +184,12 @@ def first_slip_after(health, start):
 
 
 def first_truth_gap(wheel, body, start, end, gap):
-    """Return when the true body and wheel speeds first differ by more than gap in [start, end].
+    """
+    Return when the true body and wheel speeds first differ by more than gap.
 
-    wheel and body are [(t, v)] (truth); each body sample is paired with the
-    latest wheel sample before it. None if the gap is never reached.
+    Only [start, end] is searched. wheel and body are [(t, v)] (truth); each
+    body sample is paired with the latest wheel sample before it. None if the
+    gap is never reached.
     """
     i, latest_wheel = 0, None
     for t, v_body in body:
@@ -278,7 +280,8 @@ def run_checks(checks, steps, windows, samples, health, recording):
         if 'expect_slip_after_gap' in step:
             # Timed from the slide itself (VAL-006): how big a slide is varies
             # between runs, so "within X s of the step starting" is flaky.
-            gap, within = step['expect_slip_after_gap']['gap'], step['expect_slip_after_gap']['within']
+            gap = step['expect_slip_after_gap']['gap']
+            within = step['expect_slip_after_gap']['within']
             t_gap = first_truth_gap(recording.wheel, recording.body, start, end, gap)
             if t_gap is None:
                 metrics.append(f'slide in step {i}         never {gap} m/s (wheel vs body): '
@@ -286,8 +289,9 @@ def run_checks(checks, steps, windows, samples, health, recording):
             else:
                 first = first_slip_after(health, start)
                 late = None if first is None else first - t_gap
-                metrics.append(f'slide in step {i}         {gap} m/s at {t_gap - start:.2f} s; slip '
-                               + (f'{late:+.2f} s after' if late is not None else 'never seen'))
+                seen = f'{late:+.2f} s after' if late is not None else 'never seen'
+                metrics.append(
+                    f'slide in step {i}         {gap} m/s at {t_gap - start:.2f} s; slip {seen}')
                 check(late is not None and late <= within + DIAGNOSTICS_LAG_S,
                       f'slip in step {i} not seen within {within} s of a {gap} m/s slide '
                       f'({"never" if late is None else f"{late:+.2f} s"})')

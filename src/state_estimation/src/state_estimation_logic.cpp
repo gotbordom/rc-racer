@@ -64,6 +64,10 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.slip_accel_span, "slip.accel_span");
   require_positive(config.slip_accel_margin, "slip.accel_margin");
   require_positive(config.slip_accel_gain, "slip.accel_gain");
+  require_positive(config.slip_impact_accel, "slip.impact_accel");
+  require_positive(config.slip_impact_lookback, "slip.impact_lookback");
+  require_positive(config.slip_pinned_speed, "slip.pinned_speed");
+  require_positive(config.slip_pinned_max_duration, "slip.pinned_max_duration");
   if (!(config.slip_correction_uncertainty >= 0.0) ||
     !std::isfinite(config.slip_correction_uncertainty))
   {
@@ -100,6 +104,8 @@ void StateEstimationLogic::reset()
   agreeing_since_.reset();
   pending_correction_.setZero();
   correction_time_left_ = 0.0;
+  after_impact_ = false;
+  pinned_since_.reset();
 }
 
 void StateEstimationLogic::predict(double dt)
@@ -367,6 +373,26 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   }
   status_.understeer_detected = understeer;
   bool slipping = wheel_slip || sliding || understeer;
+
+  // Impact (VAL-019, #14): a deceleration far beyond what braking can do,
+  // in any step of the last slip_impact_lookback s. The sim IMU shows one
+  // since DEV-07 (~-50 m/s^2 into the bench); the drive brakes at 3.
+  bool impact = false;
+  if (const auto back = imu_reference_speed(config_.slip_impact_lookback)) {
+    const double direction = speed_history_[back->index].speed >= 0.0 ? 1.0 : -1.0;
+    for (std::size_t i = back->index + 1; i < speed_history_.size(); ++i) {
+      const SpeedSample & a = speed_history_[i - 1];
+      const SpeedSample & b = speed_history_[i];
+      const double dt = b.time - a.time;
+      if (dt > 0.0 &&
+        (b.accel_integral - a.accel_integral) / dt * direction < -config_.slip_impact_accel)
+      {
+        impact = true;
+        break;
+      }
+    }
+  }
+
   if (status_.slip_detected) {
     // Hysteresis: while slipping the wheel is not fused, so the speed is
     // IMU-only. The wheel is trusted again only after agreeing with it
@@ -389,7 +415,38 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     const bool stationary = std::abs(wheel.speed) < config_.stationary_speed &&
       !status_.imu_stale && std::abs(last_yaw_rate_) < config_.stationary_yaw_rate &&
       std::abs(forward_accel_) < config_.stationary_accel;
-    const bool too_long = elapsed_ - slip_since_ >= config_.slip_max_duration;
+    // Pinned (VAL-019): after an impact that left the IMU-only speed near 0
+    // with the IMU quiet, the car is not moving, whatever the spinning
+    // wheels say. Hold the speed at 0 and suspend the max_duration release,
+    // which exists because IMU-only speed drifts: a quiet IMU after a stop
+    // is the best evidence there is. Decided by the impact's outcome, not
+    // its spike: a bump that lets the car carry on leaves the IMU-only
+    // speed near what it was, so it never pins. It ends when the IMU shows
+    // the car moving again, or the wheels stop, or (a backstop) after
+    // slip_pinned_max_duration.
+    if (impact) {
+      after_impact_ = true;
+    }
+    const bool imu_quiet = !status_.imu_stale &&
+      std::abs(last_yaw_rate_) < config_.stationary_yaw_rate &&
+      std::abs(forward_accel_) < config_.stationary_accel;
+    bool pinned = false;
+    if (after_impact_) {
+      if (std::abs(state_.mean(kSpeed)) >= config_.slip_pinned_speed) {
+        after_impact_ = false;  // moving again: an ordinary slip from here
+      } else if (imu_quiet) {
+        if (!pinned_since_) {
+          pinned_since_ = elapsed_;
+        }
+        pinned = elapsed_ - *pinned_since_ < config_.slip_pinned_max_duration;
+      }
+    }
+    if (pinned) {
+      state_.mean(kSpeed) = 0.0;
+      slip_since_ = elapsed_;  // max_duration counts from leaving pinned
+    }
+    status_.pinned = pinned;
+    const bool too_long = !pinned && elapsed_ - slip_since_ >= config_.slip_max_duration;
     if (stationary || too_long) {
       state_.mean(kSpeed) = wheel.speed;
       speed_history_.clear();
@@ -399,6 +456,8 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     ++status_.slip_events;
     slip_since_ = elapsed_;
     agreeing_since_.reset();
+    after_impact_ = impact;
+    pinned_since_.reset();
     if (window_slip) {
       // The estimate followed the slipping wheel over the window; the IMU
       // reference is the better speed. Start the IMU-only stretch from it,
@@ -408,6 +467,11 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     }
   }
   status_.slip_detected = slipping;
+  if (!slipping) {
+    after_impact_ = false;
+    pinned_since_.reset();
+    status_.pinned = false;
+  }
 
   // Not yet slip, but the wheel out-accelerating (or out-braking) the car:
   // trust it less in proportion, so the estimate doesn't follow a spin

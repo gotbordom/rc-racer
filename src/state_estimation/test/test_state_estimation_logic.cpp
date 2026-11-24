@@ -794,6 +794,59 @@ TEST(StateEstimationLogicTest, HardStopIsNotABrakingSlide)
   }
 }
 
+TEST(StateEstimationLogicTest, PinnedCarEstimateStopsWithIt)
+{
+  // VAL-019 (#14): into the bench at 1 m/s, then pushing against it for 4 s
+  // with the wheels spinning at 1 m/s, then the drive stops. The IMU shows
+  // the impact (-50 m/s^2 for one step, as the sim does since DEV-07) and is
+  // quiet after. The estimate must stop with the car, not drive on when the
+  // 2 s max_duration release comes.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  const double stop_x = logic.state().mean(kX);
+  cycle(logic, imu_sample(0.0, -50.0), 1.0);  // impact: -1 m/s in 20 ms
+  bool pinned = false;
+  for (int i = 0; i < 200; ++i) {  // pushing, 4 s
+    cycle(logic, imu_sample(0.0), 1.0);
+    pinned = pinned || logic.status().pinned;
+  }
+  EXPECT_TRUE(pinned);
+  EXPECT_TRUE(logic.status().slip_detected);
+  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.1);
+  for (int i = 0; i < 25; ++i) {  // the drive stops: wheels spin down
+    cycle(logic, imu_sample(0.0), 1.0 - 0.04 * (i + 1));
+  }
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  EXPECT_FALSE(logic.status().slip_detected);
+  EXPECT_FALSE(logic.status().pinned);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 0.0, 0.05);
+  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.15);
+}
+
+TEST(StateEstimationLogicTest, BumpIsNotAPinnedStop)
+{
+  // A sharp jolt back and forward (a curb, a rut) with no net speed loss:
+  // the IMU spikes past the impact level but the car carries on. Never
+  // pinned, and the estimate keeps the speed.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  const double x0 = logic.state().mean(kX);
+  cycle(logic, imu_sample(0.0, -20.0), 1.0);
+  cycle(logic, imu_sample(0.0, 20.0), 1.0);
+  for (int i = 0; i < 150; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+    ASSERT_FALSE(logic.status().pinned) << "cycle " << i;
+  }
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.05);
+  EXPECT_NEAR(logic.state().mean(kX) - x0, 152 * kDt, 0.1);
+}
+
 TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)
 {
   // A launch slip that is caught late and ends soon after: one slip event,

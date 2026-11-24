@@ -150,6 +150,15 @@ struct StateEstimationConfig
   double slip_accel_span{0.2};
   double slip_accel_margin{0.6};
   double slip_accel_gain{0.5};
+  /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far
+  /// beyond braking) in any step of the last slip_impact_lookback s. After
+  /// one, while the IMU-only speed stays under slip_pinned_speed (m/s) and
+  /// the IMU is quiet, the car is pinned: speed held at 0, no max_duration
+  /// release, for at most slip_pinned_max_duration s. TBD.
+  double slip_impact_accel{8.0};
+  double slip_impact_lookback{0.25};
+  double slip_pinned_speed{0.3};
+  double slip_pinned_max_duration{10.0};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -181,6 +190,8 @@ struct StateEstimationStatus
   int stale_history_rebases{0};
   /// The last wheel sample showed understeer (see slip_lateral_threshold).
   bool understeer_detected{false};
+  /// Pinned against an obstacle after an impact (see slip_impact_accel).
+  bool pinned{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -241,6 +252,8 @@ private:
   void apply_pending_correction(double dt);
   Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
   double correction_time_left_{0.0};
+  bool after_impact_{false};             ///< this slip started with or saw an impact
+  std::optional<double> pinned_since_;   ///< when it last became pinned
 
   /// A slip caught by the windowed check: the estimate followed the wheel
   /// since the window start, the last speed trusted. Rewrite the history as

@@ -72,6 +72,10 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("slip.accel_span", d.slip_accel_span);
   declare_parameter("slip.accel_margin", d.slip_accel_margin);
   declare_parameter("slip.accel_gain", d.slip_accel_gain);
+  declare_parameter("slip.impact_accel", d.slip_impact_accel);
+  declare_parameter("slip.impact_lookback", d.slip_impact_lookback);
+  declare_parameter("slip.pinned_speed", d.slip_pinned_speed);
+  declare_parameter("slip.pinned_max_duration", d.slip_pinned_max_duration);
   declare_parameter("initial_covariance.pose", d.initial_pose_variance);
   declare_parameter("initial_covariance.speed", d.initial_speed_variance);
   declare_parameter("initial_covariance.yaw_rate", d.initial_yaw_rate_variance);
@@ -109,6 +113,10 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.slip_accel_span = get_parameter("slip.accel_span").as_double();
   c.slip_accel_margin = get_parameter("slip.accel_margin").as_double();
   c.slip_accel_gain = get_parameter("slip.accel_gain").as_double();
+  c.slip_impact_accel = get_parameter("slip.impact_accel").as_double();
+  c.slip_impact_lookback = get_parameter("slip.impact_lookback").as_double();
+  c.slip_pinned_speed = get_parameter("slip.pinned_speed").as_double();
+  c.slip_pinned_max_duration = get_parameter("slip.pinned_max_duration").as_double();
   c.initial_pose_variance = get_parameter("initial_covariance.pose").as_double();
   c.initial_speed_variance = get_parameter("initial_covariance.speed").as_double();
   c.initial_yaw_rate_variance = get_parameter("initial_covariance.yaw_rate").as_double();
@@ -325,6 +333,7 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   stat.add("slip_events", s.slip_events);
   stat.add("stale_history_rebases", s.stale_history_rebases);
   stat.add("understeer_detected", s.understeer_detected);
+  stat.add("pinned", s.pinned);
   stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);

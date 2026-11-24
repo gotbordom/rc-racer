@@ -65,6 +65,7 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("slip.variance_scale", d.slip_variance_scale);
   declare_parameter("slip.correction_uncertainty", d.slip_correction_uncertainty);
   declare_parameter("slip.braking_accel", d.slip_braking_accel);
+  declare_parameter("slip.braking_threshold", d.slip_braking_threshold);
   declare_parameter("slip.correction_time", d.slip_correction_time);
   declare_parameter("slip.lateral_threshold", d.slip_lateral_threshold);
   declare_parameter("slip.lateral_min_yaw_rate", d.slip_lateral_min_yaw_rate);
@@ -101,6 +102,7 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.slip_variance_scale = get_parameter("slip.variance_scale").as_double();
   c.slip_correction_uncertainty = get_parameter("slip.correction_uncertainty").as_double();
   c.slip_braking_accel = get_parameter("slip.braking_accel").as_double();
+  c.slip_braking_threshold = get_parameter("slip.braking_threshold").as_double();
   c.slip_correction_time = get_parameter("slip.correction_time").as_double();
   c.slip_lateral_threshold = get_parameter("slip.lateral_threshold").as_double();
   c.slip_lateral_min_yaw_rate = get_parameter("slip.lateral_min_yaw_rate").as_double();

@@ -57,6 +57,7 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
     throw std::invalid_argument("slip.variance_scale must be >= 1");
   }
   require_positive(config.slip_braking_accel, "slip.braking_accel");
+  require_positive(config.slip_braking_threshold, "slip.braking_threshold");
   require_positive(config.slip_correction_time, "slip.correction_time");
   require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
   require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
@@ -304,12 +305,16 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   // half window; without, the history is stale and is rebuilt from now.
   // A wheel ahead is not restricted: spin on launch, a pinned car and
   // understeer all put it ahead.
+  //
+  // Behind while braking is also the one case with a tighter threshold
+  // (slip.braking_threshold): a braking slide builds slowly (VAL-006: the
+  // wheel slows at the drive's 3 m/s^2, the car at ~2.5 on mu 0.5, so
+  // ~0.25 m/s apart after half a second), and a normal hard stop, wheel and
+  // car slowing together, gives no gap at all.
   const std::optional<ReferenceSpeed> reference = imu_reference_speed(config_.slip_window);
-  const bool window_gap = reference &&
-    std::abs(wheel.speed - reference->speed) >
-    config_.slip_threshold + 3.0 * std::sqrt(reference->variance);
+  bool window_gap = false;
   bool consistent = true;
-  if (window_gap) {
+  if (reference) {
     const double direction = reference->speed >= 0.0 ? 1.0 : -1.0;
     const bool wheel_behind = (reference->speed - wheel.speed) * direction > 0.0;
     const std::optional<ReferenceSpeed> recent = imu_reference_speed(0.5 * config_.slip_window);
@@ -317,6 +322,10 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     const double span = elapsed_ - mid.time;
     const double recent_accel = span > 0.0 ? (accel_integral_ - mid.accel_integral) / span : 0.0;
     const bool braking = recent_accel * direction < -config_.slip_braking_accel;
+    const double threshold =
+      wheel_behind && braking ? config_.slip_braking_threshold : config_.slip_threshold;
+    window_gap = std::abs(wheel.speed - reference->speed) >
+      threshold + 3.0 * std::sqrt(reference->variance);
     consistent = !wheel_behind || braking;
   }
   const bool window_slip = window_gap && consistent;

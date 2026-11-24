@@ -128,6 +128,10 @@ struct StateEstimationConfig
   /// the recent half window: a driven wheel falls behind the car only while
   /// braking. TBD.
   double slip_braking_accel{0.5};
+  /// m/s. The windowed check's threshold for that case, a wheel
+  /// behind its reference while braking (on top of 3 sigma), tighter than
+  /// slip_threshold: a braking slide builds slowly (VAL-006). TBD.
+  double slip_braking_threshold{0.15};
   /// s. The retroactive correction is applied over this long, so odom stays
   /// continuous. TBD.
   double slip_correction_time{0.5};

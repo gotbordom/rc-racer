@@ -74,6 +74,7 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("slip.accel_gain", d.slip_accel_gain);
   declare_parameter("slip.impact_accel", d.slip_impact_accel);
   declare_parameter("slip.impact_lookback", d.slip_impact_lookback);
+  declare_parameter("slip.pinned_fraction", d.slip_pinned_fraction);
   declare_parameter("slip.pinned_speed", d.slip_pinned_speed);
   declare_parameter("slip.pinned_max_duration", d.slip_pinned_max_duration);
   declare_parameter("initial_covariance.pose", d.initial_pose_variance);
@@ -115,6 +116,7 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.slip_accel_gain = get_parameter("slip.accel_gain").as_double();
   c.slip_impact_accel = get_parameter("slip.impact_accel").as_double();
   c.slip_impact_lookback = get_parameter("slip.impact_lookback").as_double();
+  c.slip_pinned_fraction = get_parameter("slip.pinned_fraction").as_double();
   c.slip_pinned_speed = get_parameter("slip.pinned_speed").as_double();
   c.slip_pinned_max_duration = get_parameter("slip.pinned_max_duration").as_double();
   c.initial_pose_variance = get_parameter("initial_covariance.pose").as_double();

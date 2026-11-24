@@ -152,11 +152,14 @@ struct StateEstimationConfig
   double slip_accel_gain{0.5};
   /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far
   /// beyond braking) in any step of the last slip_impact_lookback s. After
-  /// one, while the IMU-only speed stays under slip_pinned_speed (m/s) and
-  /// the IMU is quiet, the car is pinned: speed held at 0, no max_duration
-  /// release, for at most slip_pinned_max_duration s. TBD.
+  /// one that took at least slip_pinned_fraction of the speed, with the IMU
+  /// quiet and the wheel disagreeing, the car is pinned: speed held at 0,
+  /// no max_duration release, until the IMU shows it has picked up
+  /// slip_pinned_speed (m/s), the wheels stop, or slip_pinned_max_duration
+  /// (s) passes. TBD.
   double slip_impact_accel{8.0};
   double slip_impact_lookback{0.25};
+  double slip_pinned_fraction{0.5};
   double slip_pinned_speed{0.3};
   double slip_pinned_max_duration{10.0};
 
@@ -248,12 +251,17 @@ private:
   /// that sample's speed minus the IMU integral back to them.
   void rebase_history_before(std::size_t from);
 
+  /// Restart the IMU-only speed from before an impact plus the IMU since.
+  void restart_from_impact();
+
   /// Move the position by this step's share of a pending correction.
   void apply_pending_correction(double dt);
   Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
   double correction_time_left_{0.0};
   bool after_impact_{false};             ///< this slip started with or saw an impact
+  double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
   std::optional<double> pinned_since_;   ///< when it last became pinned
+  double pinned_accel_integral_{0.0};    ///< accel_integral_ when pinned
 
   /// A slip caught by the windowed check: the estimate followed the wheel
   /// since the window start, the last speed trusted. Rewrite the history as

@@ -827,6 +827,49 @@ TEST(StateEstimationLogicTest, PinnedCarEstimateStopsWithIt)
   EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.15);
 }
 
+TEST(StateEstimationLogicTest, ImpactThatLeavesSomeSpeedStillPins)
+{
+  // VAL-007 (2026-11-24): the IMU-only speed came out of the impact at
+  // 0.37 m/s (the car crept on into the bench), over a fixed 0.3 m/s pinned
+  // limit, so the estimate drove on when max_duration released the slip.
+  // The impact took 63 % of the speed: that is what pins now.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  const double stop_x = logic.state().mean(kX);
+  cycle(logic, imu_sample(0.0, -31.5), 1.0);  // -0.63 m/s
+  bool pinned = false;
+  for (int i = 0; i < 200; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+    pinned = pinned || logic.status().pinned;
+  }
+  EXPECT_TRUE(pinned);
+  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.15);
+}
+
+TEST(StateEstimationLogicTest, PinnedCarThatDrivesAwayIsFollowed)
+{
+  // After pinning, the car backs off the obstacle and drives on: the IMU
+  // shows it picking up speed, which ends the pinned hold.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  cycle(logic, imu_sample(0.0, -50.0), 1.0);
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  ASSERT_TRUE(logic.status().pinned);
+  double v = 0.0;
+  for (int i = 0; i < 50; ++i) {  // 1 m/s^2 for 1 s, the wheel matching
+    v += 1.0 * kDt;
+    cycle(logic, imu_sample(0.0, 1.0), std::max(1.0, v));
+  }
+  EXPECT_FALSE(logic.status().pinned);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.15);
+}
+
 TEST(StateEstimationLogicTest, BumpIsNotAPinnedStop)
 {
   // A sharp jolt back and forward (a curb, a rut) with no net speed loss:

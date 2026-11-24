@@ -1,0 +1,23 @@
+# The drive of VAL-007, checking the estimate stops when the car does.
+# Pinned against the bench, the driven wheels spin at a steady 1 m/s and
+# the IMU shows no acceleration, which looks like cruising: no slip is
+# flagged and the estimate drives on through the bench. Run 2026-11-24:
+# 4.3 m past it after 4 s of pushing, at sigma 0.5 m. The impact is the
+# only sign, and the sim IMU misses it (DEV-07), so the fix needs the sim
+# first, then impact detection in the estimator (spec Open Item 8).
+id: VAL-019
+title: The estimate stops when the car is pinned against an obstacle (mu 0.5)
+world: practice_course.world
+tire_mu: 0.5
+steps:
+  - {duration: 1.0, speed: 0.0, speed_end: 1.0, steer: 0.0071}
+  - {duration: 44.0, speed: 1.0, steer: 0.0071}
+  - {duration: 3.0, speed: 0.0}
+checks:
+  final_position_error: 0.5
+  min_consistent_fraction: 0.95
+  never_error: true
+  true_end_near: {x: 39.5, y: 7.7, within: 1.0}
+expected_fail:
+  reason: "a pinned car with spinning wheels looks like cruising; the sim IMU misses the impact (DEV-07; VEH.GNC.SE spec Open Item 8)"
+  failing: ["final position error", "inside 3 sigma"]

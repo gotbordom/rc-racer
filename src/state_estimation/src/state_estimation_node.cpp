@@ -63,6 +63,9 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("stationary.yaw_rate", d.stationary_yaw_rate);
   declare_parameter("stationary.accel", d.stationary_accel);
   declare_parameter("slip.variance_scale", d.slip_variance_scale);
+  declare_parameter("slip.correction_uncertainty", d.slip_correction_uncertainty);
+  declare_parameter("slip.braking_accel", d.slip_braking_accel);
+  declare_parameter("slip.correction_time", d.slip_correction_time);
   declare_parameter("initial_covariance.pose", d.initial_pose_variance);
   declare_parameter("initial_covariance.speed", d.initial_speed_variance);
   declare_parameter("initial_covariance.yaw_rate", d.initial_yaw_rate_variance);
@@ -91,6 +94,9 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.stationary_yaw_rate = get_parameter("stationary.yaw_rate").as_double();
   c.stationary_accel = get_parameter("stationary.accel").as_double();
   c.slip_variance_scale = get_parameter("slip.variance_scale").as_double();
+  c.slip_correction_uncertainty = get_parameter("slip.correction_uncertainty").as_double();
+  c.slip_braking_accel = get_parameter("slip.braking_accel").as_double();
+  c.slip_correction_time = get_parameter("slip.correction_time").as_double();
   c.initial_pose_variance = get_parameter("initial_covariance.pose").as_double();
   c.initial_speed_variance = get_parameter("initial_covariance.speed").as_double();
   c.initial_yaw_rate_variance = get_parameter("initial_covariance.yaw_rate").as_double();
@@ -305,6 +311,7 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   stat.add("wheel_odom_age", s.wheel_age);
   stat.add("slip_detected", s.slip_detected);
   stat.add("slip_events", s.slip_events);
+  stat.add("stale_history_rebases", s.stale_history_rebases);
   stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);

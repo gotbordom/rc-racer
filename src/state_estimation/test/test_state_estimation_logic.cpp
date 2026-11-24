@@ -499,6 +499,142 @@ TEST(StateEstimationLogicTest, ImuSamplesBetweenPredictsAreAveraged)
   EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.03);
 }
 
+// A launch as in the L2 sim loop (2026-11-24), with the sim's sensor noise:
+// the body accelerates at `accel` to 1 m/s while the wheel leads it by
+// `lead`, then both cruise at 1 m/s for 2 s.
+struct LaunchRun
+{
+  int slip_events_in_launch;
+  int slip_events_in_cruise;
+  double max_cruise_speed;   // from 0.2 s into the cruise
+  double final_speed;
+  double max_position_error;
+  bool always_inside_3_sigma;
+};
+
+LaunchRun noisy_launch(double accel, double lead, int seed)
+{
+  std::mt19937 rng(seed);
+  std::normal_distribution<double> gyro(0.0, kGyroStd);
+  std::normal_distribution<double> accel_noise(0.0, kAccelStd);
+  std::normal_distribution<double> wheel_noise(0.0, kWheelStd);
+  StateEstimationLogic logic;
+  double true_x = 0.0;
+  LaunchRun run{0, 0, 0.0, 0.0, 0.0, true};
+  auto step = [&](double a, double v_body, double v_wheel) {
+      true_x += v_body * kDt;
+      logic.predict(kDt);
+      logic.update_imu(imu_sample(gyro(rng), a + accel_noise(rng)));
+      logic.update_imu(imu_sample(gyro(rng), a + accel_noise(rng)));
+      logic.update_wheel_speed(wheel_sample(v_wheel + wheel_noise(rng)));
+      const RobotState e = logic.estimate();
+      const double error = std::abs(e.mean(kX) - true_x);
+      run.max_position_error = std::max(run.max_position_error, error);
+      // + (2 cm)^2 for comparing at a 20 ms step, as the L2 test allows
+      run.always_inside_3_sigma = run.always_inside_3_sigma &&
+        error <= 3.0 * std::sqrt(e.covariance(kX, kX) + 4e-4);
+    };
+  for (int i = 0; i < 50; ++i) {
+    step(0.0, 0.0, 0.0);
+  }
+  double body = 0.0;
+  while (body < 1.0) {
+    const double a = std::min(accel, (1.0 - body) / kDt);
+    body += a * kDt;
+    step(a, body, std::min(1.0, body + lead));
+  }
+  run.slip_events_in_launch = logic.status().slip_events;
+  for (int i = 0; i < 100; ++i) {
+    step(0.0, 1.0, 1.0);
+    if (i >= 10) {
+      run.max_cruise_speed = std::max(run.max_cruise_speed, logic.state().mean(kSpeed));
+    }
+  }
+  run.slip_events_in_cruise = logic.status().slip_events - run.slip_events_in_launch;
+  run.final_speed = logic.state().mean(kSpeed);
+  return run;
+}
+
+TEST(StateEstimationLogicTest, StaleHistoryAfterUndetectedSlipIsNotSlip)
+{
+  // Regression (2026-11-24, L2 sim loop, ~1 run in 3): the wheel led the
+  // body by just under the slip threshold during the launch, so the
+  // estimate followed it undetected. Half a window later the windowed check
+  // built its reference on that contaminated estimate, blamed the now-correct
+  // wheel, and "corrected" the speed 0.33 m/s too high for 2 s. The old
+  // check did this in 34 of 200 seeds at a 0.26 m/s lead.
+  for (double lead : {0.26, 0.27}) {
+    for (int seed = 1; seed <= 50; ++seed) {
+      const LaunchRun run = noisy_launch(1.9, lead, seed);
+      EXPECT_EQ(run.slip_events_in_cruise, 0) << "lead " << lead << " seed " << seed;
+      EXPECT_LT(run.max_cruise_speed, 1.1) << "lead " << lead << " seed " << seed;
+    }
+  }
+}
+
+TEST(StateEstimationLogicTest, CaughtLaunchSlipCorrectsThePositionBack)
+{
+  // VAL-017 (#9): until the windowed check fires, the estimate follows the
+  // spinning wheel and runs ahead. On detection the position is moved back
+  // by what the wheel added over the window, and the covariance covers the
+  // rest, so the true error stays inside 3 sigma.
+  for (int seed = 1; seed <= 20; ++seed) {
+    const LaunchRun run = noisy_launch(1.7, 0.6, seed);
+    ASSERT_GE(run.slip_events_in_launch, 1) << "seed " << seed;
+    EXPECT_TRUE(run.always_inside_3_sigma) << "seed " << seed;
+    EXPECT_LT(run.max_position_error, 0.08) << "seed " << seed;
+    EXPECT_NEAR(run.final_speed, 1.0, 0.05) << "seed " << seed;
+  }
+}
+
+TEST(StateEstimationLogicTest, SlowlyBuildingSlipIsStillDetected)
+{
+  // Guard for the stale-history handling: a slip that builds over seconds
+  // (understeer, VAL-004: the wheel drifting ahead of the body) must not be
+  // mistaken for stale history. A first redesign (2026-11-24) cross-checked
+  // against half the window and stopped detecting exactly this.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  // 0.8 m/s per s: 0.4 m/s within one 0.5 s window, over the threshold.
+  // (Slower drift stays under it within any one window, so the windowed
+  // check cannot see it at all: a known limit, VAL-018.)
+  int detected_at = -1;
+  for (int i = 0; i < 150 && detected_at < 0; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0 + 0.8 * i * kDt);
+    if (logic.status().slip_detected) {
+      detected_at = i;
+    }
+  }
+  ASSERT_GE(detected_at, 0) << "never detected";
+  EXPECT_LT(detected_at * kDt, 1.0);
+}
+
+TEST(StateEstimationLogicTest, RetroactiveCorrectionKeepsOdomContinuous)
+{
+  // The correction on detecting a slip is spread over slip_correction_time:
+  // odom must not jump (REP-105). A one-step correction moved it 7-8 cm in
+  // the VAL-005 and VAL-017 sim scenarios.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  double body = 0.0;
+  double max_jump = 0.0;
+  double last_x = logic.state().mean(kX);
+  for (int i = 0; i < 150; ++i) {
+    const double a = body < 1.0 ? std::min(1.7, (1.0 - body) / kDt) : 0.0;
+    body += a * kDt;
+    cycle(logic, imu_sample(0.0, a), std::min(1.0, body + 0.6));
+    const double x = logic.state().mean(kX);
+    max_jump = std::max(max_jump, std::abs(x - last_x) - logic.state().mean(kSpeed) * kDt);
+    last_x = x;
+  }
+  ASSERT_GE(logic.status().slip_events, 1);
+  EXPECT_LT(max_jump, 0.01);
+}
+
 TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)
 {
   // A launch slip that is caught late and ends soon after: one slip event,

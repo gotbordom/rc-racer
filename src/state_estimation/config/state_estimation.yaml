@@ -37,6 +37,9 @@ state_estimation:
       yaw_rate: 0.05                # rad/s
       accel: 0.3                    # m/s^2
       variance_scale: 1000000.0       # wheel variance factor while slipping (TBD)
+      correction_uncertainty: 0.3     # share of a retroactive slip correction kept as 1-sigma (TBD)
+      braking_accel: 0.5              # m/s^2: wheel behind the IMU counts as slip only when braking (TBD)
+      correction_time: 0.5            # s: a retroactive slip correction is spread over this (TBD)
     initial_covariance:
       pose: 1.0e-6
       speed: 1.0

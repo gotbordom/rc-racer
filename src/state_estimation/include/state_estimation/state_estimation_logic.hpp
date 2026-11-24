@@ -109,6 +109,19 @@ struct StateEstimationConfig
   /// slipping wheel has no real pull (1e4 still dragged the estimate after
   /// a crash). TBD.
   double slip_variance_scale{1.0e6};
+  /// When the windowed check catches a slip, the position is moved back by
+  /// what the wheel added over the window (VAL-017). This share of that
+  /// correction is added as 1-sigma along-track uncertainty, as the window
+  /// start may itself have been partly off. TBD.
+  double slip_correction_uncertainty{0.3};
+  /// m/s^2. The windowed check counts a wheel slower than its IMU reference
+  /// as slip only while the IMU shows at least this much deceleration over
+  /// the recent half window: a driven wheel falls behind the car only while
+  /// braking. TBD.
+  double slip_braking_accel{0.5};
+  /// s. The retroactive correction is applied over this long, so odom stays
+  /// continuous. TBD.
+  double slip_correction_time{0.5};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -134,6 +147,10 @@ struct StateEstimationStatus
   /// Times slip started. Counted so a health report can warn about slip
   /// that came and went between reports.
   int slip_events{0};
+  /// Times the windowed check found its history stale (a wheel behind its
+  /// reference with no braking: left by a slip too small to catch) and
+  /// rebuilt it, instead of calling slip.
+  int stale_history_rebases{0};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -174,14 +191,33 @@ public:
   const StateEstimationConfig & config() const {return config_;}
 
 private:
-  /// Estimate from slip_window ago plus the IMU acceleration since, and the
-  /// variance it had then; unset until a full window of fresh IMU exists.
+  /// The estimate from `age` ago (the newest history sample at least that
+  /// old) plus the IMU acceleration since, and the variance it had then;
+  /// unset until that much fresh IMU history exists.
   struct ReferenceSpeed
   {
     double speed;
     double variance;
+    std::size_t index;  ///< of the history sample it starts from
   };
-  std::optional<ReferenceSpeed> imu_reference_speed() const;
+  std::optional<ReferenceSpeed> imu_reference_speed(double age) const;
+
+  /// History older than sample `from` holds speeds the IMU path from it
+  /// contradicts (an earlier, undetected slip left them): rewrite them as
+  /// that sample's speed minus the IMU integral back to them.
+  void rebase_history_before(std::size_t from);
+
+  /// Move the position by this step's share of a pending correction.
+  void apply_pending_correction(double dt);
+  Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
+  double correction_time_left_{0.0};
+
+  /// A slip caught by the windowed check: the estimate followed the wheel
+  /// since the window start, the last speed trusted. Rewrite the history as
+  /// the IMU path from there, move the position back by the distance the
+  /// wheel added on top of it, and grow the covariance by that correction's
+  /// uncertainty (VAL-017). Returns the correction (m, along track).
+  double correct_window_retroactively(const ReferenceSpeed & from);
 
 
   /// Restore the last good estimate if the current one is not finite.

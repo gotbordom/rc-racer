@@ -42,6 +42,9 @@ state_estimation:
       correction_time: 0.5            # s: a retroactive slip correction is spread over this (TBD)
       lateral_threshold: 0.5          # m/s^2: lateral accel short of wheel speed x yaw rate = understeer (TBD)
       lateral_min_yaw_rate: 0.3       # rad/s: understeer is checked only when turning faster (TBD)
+      accel_span: 0.2                 # s: wheel vs IMU acceleration compared over this (TBD)
+      accel_margin: 0.6               # m/s^2: mismatch beyond this grows the wheel variance (TBD)
+      accel_gain: 0.5                 # s: extra wheel sigma = gain x excess mismatch (TBD)
     initial_covariance:
       pose: 1.0e-6
       speed: 1.0

@@ -137,6 +137,15 @@ struct StateEstimationConfig
   /// faster than slip_lateral_min_yaw_rate (rad/s). TBD.
   double slip_lateral_threshold{0.5};
   double slip_lateral_min_yaw_rate{0.3};
+  /// Before the slip decision (VAL-017): over the last slip_accel_span s,
+  /// the wheel's acceleration is compared with the IMU's. Beyond
+  /// slip_accel_margin (m/s^2, above the wheel's differenced noise) the
+  /// wheel's variance grows by (slip_accel_gain x excess)^2, the speed error
+  /// that mismatch could have built (s). A developing spin is distrusted
+  /// gradually instead of followed until the hard decision. TBD.
+  double slip_accel_span{0.2};
+  double slip_accel_margin{0.6};
+  double slip_accel_gain{0.5};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -280,6 +289,7 @@ private:
     double lateral_integral;      ///< of the measured lateral acceleration
     double centripetal_integral;  ///< of wheel speed x yaw rate
     double yaw_rate;              ///< IMU, at this sample
+    double wheel_speed;           ///< the last wheel reading, at this sample
   };
   std::deque<SpeedSample> speed_history_;
   /// While slipping: since when the wheel has agreed again (hysteresis).

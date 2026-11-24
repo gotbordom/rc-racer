@@ -60,6 +60,9 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.slip_correction_time, "slip.correction_time");
   require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
   require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
+  require_positive(config.slip_accel_span, "slip.accel_span");
+  require_positive(config.slip_accel_margin, "slip.accel_margin");
+  require_positive(config.slip_accel_gain, "slip.accel_gain");
   if (!(config.slip_correction_uncertainty >= 0.0) ||
     !std::isfinite(config.slip_correction_uncertainty))
   {
@@ -147,7 +150,7 @@ void StateEstimationLogic::predict(double dt)
   centripetal_integral_ += last_wheel_speed_ * last_yaw_rate_ * dt;
   speed_history_.push_back(
     {elapsed_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed), accel_integral_,
-      lateral_integral_, centripetal_integral_, last_yaw_rate_});
+      lateral_integral_, centripetal_integral_, last_yaw_rate_, last_wheel_speed_});
   // Keep the newest sample that is at least slip_window old at the front.
   while (speed_history_.size() > 1 && speed_history_[1].time <= elapsed_ - config_.slip_window) {
     speed_history_.pop_front();
@@ -397,8 +400,25 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   }
   status_.slip_detected = slipping;
 
-  status_.wheel_variance_used =
-    status_.slip_detected ? wheel.variance * config_.slip_variance_scale : wheel.variance;
+  // Not yet slip, but the wheel out-accelerating (or out-braking) the car:
+  // trust it less in proportion, so the estimate doesn't follow a spin
+  // that's still under the slip threshold (VAL-017, #9). A matched hard
+  // acceleration leaves it alone.
+  double early_variance = 0.0;
+  if (const auto span = imu_reference_speed(config_.slip_accel_span)) {
+    const SpeedSample & then = speed_history_[span->index];
+    const double dt = elapsed_ - then.time;
+    if (dt > 0.0 && !status_.imu_stale) {
+      const double wheel_accel = (wheel.speed - then.wheel_speed) / dt;
+      const double imu_accel = (accel_integral_ - then.accel_integral) / dt;
+      const double excess = std::abs(wheel_accel - imu_accel) - config_.slip_accel_margin;
+      if (excess > 0.0) {
+        early_variance = std::pow(config_.slip_accel_gain * excess, 2);
+      }
+    }
+  }
+  status_.wheel_variance_used = status_.slip_detected ?
+    wheel.variance * config_.slip_variance_scale : wheel.variance + early_variance;
   fusion_->update(state_, kSpeed, wheel.speed, status_.wheel_variance_used);
   guard_numerics();
   last_wheel_speed_ = wheel.speed;

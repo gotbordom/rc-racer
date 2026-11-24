@@ -646,9 +646,10 @@ TEST(StateEstimationLogicTest, RetroactiveCorrectionKeepsOdomContinuous)
 
 // Drive a turn as the bicycle model has it, without slip: the IMU (at the
 // default mount, 0.192 m ahead of the rear axle) reads yaw rate x speed plus
-// lever x yaw acceleration sideways, and the wheel reads `wheel_factor` x the
-// body speed. The yaw rate ramps from 0 to `omega` over `turn_in` s, then
-// holds. Returns whether understeer was ever flagged.
+// lever x yaw acceleration sideways and -omega^2 x lever forward, and the
+// wheel reads `wheel_factor` x the body speed. The yaw rate ramps from 0 to
+// `omega` over `turn_in` s, then holds. Returns whether understeer was ever
+// flagged.
 bool turn(
   StateEstimationLogic & logic, double speed, double omega, double turn_in,
   double seconds, double wheel_factor = 1.0)
@@ -660,7 +661,8 @@ bool turn(
     const double alpha = (i * kDt < turn_in) ? omega / turn_in : 0.0;
     for (int k = 0; k < 2; ++k) {
       w += alpha * 0.5 * kDt;
-      logic.update_imu(turn_sample(w, w * speed + lever * alpha));
+      // Ahead of the rear axle the IMU also reads -omega^2 x lever forward.
+      logic.update_imu(turn_sample(w, w * speed + lever * alpha, -w * w * lever));
     }
     logic.predict(kDt);
     logic.update_wheel_speed(wheel_sample(wheel_factor * speed));
@@ -700,6 +702,42 @@ TEST(StateEstimationLogicTest, UndersteerIsDetected)
   ASSERT_FALSE(turn(logic, 2.6, 2.0, 0.3, 1.0));  // grip: no understeer
   EXPECT_TRUE(turn(logic, 2.6, 2.0, 0.02, 1.0, 3.0 / 2.6));
   EXPECT_GE(logic.status().slip_events, 1);
+}
+
+TEST(StateEstimationLogicTest, DevelopingSpinIsDistrustedBeforeDetection)
+{
+  // VAL-017 (#9): before the windowed check decides, the estimate used to
+  // follow a spinning wheel almost fully. Now the wheel's variance grows with
+  // how far it out-accelerates the IMU, so the estimate stays near the body.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  double body = 0.0;
+  double wheel = 0.0;
+  double max_gap = 0.0;
+  while (body < 1.0) {  // the body at 1.9 m/s^2, the wheel spinning up at 3
+    const double a = std::min(1.9, (1.0 - body) / kDt);
+    body += a * kDt;
+    wheel = std::min(1.0, wheel + 3.0 * kDt);
+    cycle(logic, imu_sample(0.0, a), wheel);
+    max_gap = std::max(max_gap, logic.state().mean(kSpeed) - body);
+  }
+  EXPECT_LT(max_gap, 0.12);  // following the wheel, it was ~0.3
+}
+
+TEST(StateEstimationLogicTest, MatchedHardAccelerationKeepsTheWheelTrusted)
+{
+  // The early distrust is about a mismatch, not acceleration: wheel and IMU
+  // agreeing at 2.5 m/s^2 leave the wheel variance as it is.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  for (int i = 1; i <= 60; ++i) {
+    cycle(logic, imu_sample(0.0, 2.5), 2.5 * i * kDt);
+    ASSERT_DOUBLE_EQ(logic.status().wheel_variance_used, kWheelStd * kWheelStd) << "cycle " << i;
+  }
 }
 
 TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)

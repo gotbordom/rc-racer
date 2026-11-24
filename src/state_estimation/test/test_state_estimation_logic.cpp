@@ -848,6 +848,27 @@ TEST(StateEstimationLogicTest, ImpactThatLeavesSomeSpeedStillPins)
   EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.15);
 }
 
+TEST(StateEstimationLogicTest, ImpactTheImuOnlyPartlySawStillPins)
+{
+  // VAL-007, another run (2026-11-24): the IMU-only speed came out of the
+  // impact at 0.54 m/s, 46 % of the speed taken (runs so far: 46-87 %, the
+  // true loss ~80-100 %). The signature is what counts: a big impact, then
+  // the wheel still at its old speed and the IMU quiet.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  const double stop_x = logic.state().mean(kX);
+  cycle(logic, imu_sample(0.0, -23.0), 1.0);  // -0.46 m/s
+  bool pinned = false;
+  for (int i = 0; i < 200; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+    pinned = pinned || logic.status().pinned;
+  }
+  EXPECT_TRUE(pinned);
+  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.2);
+}
+
 TEST(StateEstimationLogicTest, PinnedCarThatDrivesAwayIsFollowed)
 {
   // After pinning, the car backs off the obstacle and drives on: the IMU

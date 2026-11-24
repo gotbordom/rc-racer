@@ -48,7 +48,7 @@ state_estimation:
       accel_gain: 0.5                 # s: extra wheel sigma = gain x excess mismatch (TBD)
       impact_accel: 8.0               # m/s^2: deceleration beyond this is an impact (TBD)
       impact_lookback: 0.25           # s: an impact this recent counts for a new slip (TBD)
-      pinned_fraction: 0.5            # an impact that took this share of the speed can pin (TBD)
+      pinned_fraction: 0.3            # an impact that took this share of the speed can pin (TBD)
       pinned_speed: 0.3               # m/s: the IMU must show this picked up to leave pinned (TBD)
       pinned_max_duration: 10.0       # s: backstop on holding the speed at 0 while pinned (TBD)
     initial_covariance:

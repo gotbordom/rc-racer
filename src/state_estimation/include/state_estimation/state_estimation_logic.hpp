@@ -159,7 +159,7 @@ struct StateEstimationConfig
   /// (s) passes. TBD.
   double slip_impact_accel{8.0};
   double slip_impact_lookback{0.25};
-  double slip_pinned_fraction{0.5};
+  double slip_pinned_fraction{0.3};
   double slip_pinned_speed{0.3};
   double slip_pinned_max_duration{10.0};
 

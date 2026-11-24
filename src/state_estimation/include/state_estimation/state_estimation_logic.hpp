@@ -148,6 +148,10 @@ struct StateEstimationConfig
   /// that mismatch could have built (s). A developing spin is distrusted
   /// gradually instead of followed until the hard decision. TBD.
   double slip_accel_span{0.2};
+  /// m/s. The no-slip constraint's 1 sigma: how far the rear axle may move
+  /// sideways while gripping (spec §6.1). Tight, so the filter matches the
+  /// kinematic bicycle model. TBD.
+  double no_slip_lateral_speed_stddev{0.02};
   double slip_accel_margin{0.6};
   double slip_accel_gain{0.5};
   /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far

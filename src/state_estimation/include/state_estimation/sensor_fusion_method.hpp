@@ -19,7 +19,14 @@ namespace state_estimation
 /// Inputs to one predict step.
 struct PredictInputs
 {
-  double forward_accel{0.0};  ///< m/s^2, gravity removed; 0 when unknown
+  /// Body-frame acceleration of base_footprint, gravity removed, m/s^2; 0
+  /// when unknown. The state's speeds change as v_x' = a_x + omega v_y and
+  /// v_y' = a_y - omega v_x.
+  double forward_accel{0.0};
+  double lateral_accel{0.0};
+  /// Variance of lateral_accel plus unmodelled lateral acceleration,
+  /// (m/s^2)^2 per second of prediction.
+  double lateral_accel_noise_density{0.0};
   /// Variance of forward_accel plus unmodelled acceleration, (m/s^2)^2 per
   /// second of prediction (continuous-time spectral density).
   double accel_noise_density{0.0};

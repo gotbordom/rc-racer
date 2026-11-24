@@ -36,7 +36,7 @@ It does **not**:
 
 | Name | Type | ICD | Rate | Notes |
 | --- | --- | --- | --- | --- |
-| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance. Pose z, roll, pitch variance is **0**: `base_footprint` is on the ground plane by definition (REP-120), and RViz draws a 2D ellipse only then. Velocities not estimated (lateral, vertical, roll/pitch rates) have variance 1e6 |
+| `/odom` | `nav_msgs/msg/Odometry` | GNC-internal (SE → LOC, PLN) | 50 Hz | `frame_id: odom`, `child_frame_id: base_footprint`, full covariance. Pose z, roll, pitch variance is **0**: `base_footprint` is on the ground plane by definition (REP-120), and RViz draws a 2D ellipse only then. `twist.linear.y` is the body's **sideways speed** (since 2.5): ω × `robot.rear_axle_offset` while gripping (~0.19 m × ω), more in a slide, with its covariance. Velocities not estimated (vertical, roll/pitch rates) have variance 1e6 |
 | TF `odom` → `base_footprint` | `tf2_msgs/msg/TFMessage` | [Conventions §2](Architecture-Conventions) | 50 Hz | Only publisher of this edge |
 | `/state_estimation/debug` | TBD | none (debug only) | 50 Hz | Innovations, slip flag. Not an interface: nothing may depend on it. **Not implemented yet**; the slip flag is in `/diagnostics` |
 | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | [Conventions §8](Architecture-Conventions) | 1 Hz | See §5 |
@@ -147,7 +147,7 @@ Detecting the slide (understeer check, 2.4) and distrusting the wheel can't fix 
 - **Measurements:**
   - wheel speed → v_x (unchanged);
   - gyro → ω (unchanged);
-  - a **no-slip pseudo-measurement** at the rear axle: v_y − ω·`rear_axle_offset` = 0.
+  - a **no-slip pseudo-measurement** at the rear axle: v_y = ω·`rear_axle_offset`, applied to v_y alone at the current ω (`no_slip.lateral_speed_stddev`, 0.02 m/s). A constraint on both v_y and ω let a bad lateral reading pull the yaw rate (0.168 for a 0.2 rad/s gyro in the node test); the gyro measures ω directly.
 - **The pseudo-measurement's variance is what the slip logic controls.** While gripping it's small, and the filter reproduces today's bicycle model (VAL-001/002/003/016 and the L2 loop must not change). When the understeer check or the yaw-rate check flags a slide, it's relaxed, so v_y follows the IMU and the covariance grows sideways honestly. When grip returns, it tightens again.
 - **The unicycle** uses the same structure with the constraint at its centre (offset 0).
 
@@ -167,7 +167,7 @@ Limits to expect:
 - *Speed from the turn* (v_x = a_y/ω while turning). It's the steady-state special case of the above (v̇_y = 0). It's simpler but wrong during turn-in and turn-out, when v̇_y ≠ 0, and it gives nothing about sideways position.
 - *Cap and blend* (keep IMU-only, cap at the wheel speed). It only bounds the error.
 
-**Plan:** feature 2.5 `lateral-velocity` (owner, 2026-11-24), after 2.4 (which keeps detection, early distrust, braking and impact detection). Steps:
+**Status:** step 1 done on `feature/2.5-lateral-velocity` (the constraint always tight). **Plan:** feature 2.5 `lateral-velocity` (owner, 2026-11-24), after 2.4 (which keeps detection, early distrust, braking and impact detection). Steps:
 1. state and Jacobians with the constraint always tight, proving nothing changes (all scenarios and the L2 loop as before);
 2. relax the constraint on understeer or yaw-rate slide;
 3. tune and test against VAL-004/018, then remove VAL-018's expected-fail mark.

@@ -159,7 +159,7 @@ TEST(WheelConversionTest, UsesOnlyForwardSpeed)
 RobotState make_state()
 {
   RobotState s;
-  s.mean << 1.0, 2.0, 0.5, 1.2, -0.3;
+  s.mean << 1.0, 2.0, 0.5, 1.2, -0.3, 0.07;
   StateMatrix a = StateMatrix::Random();
   s.covariance = a * a.transpose() + StateMatrix::Identity();
   return s;
@@ -184,13 +184,14 @@ TEST(OdometryConversionTest, FramesAndValues)
     2.0 * std::atan2(odom.pose.pose.orientation.z, odom.pose.pose.orientation.w), 0.5,
     kTol);
   EXPECT_DOUBLE_EQ(odom.twist.twist.linear.x, 1.2);
+  EXPECT_DOUBLE_EQ(odom.twist.twist.linear.y, 0.07);  // sideways speed (2.5)
   EXPECT_DOUBLE_EQ(odom.twist.twist.angular.z, -0.3);
 }
 
 TEST(OdometryConversionTest, FullCovarianceMapped)
 {
-  // REQ-GNC-006: pose (x, y, yaw) and twist (v, omega) blocks, including
-  // cross terms. Pose z, roll, pitch are 0 by definition of base_footprint
+  // REQ-GNC-006: pose (x, y, yaw) and twist (v_x, v_y, omega) blocks,
+  // including cross terms. Pose z, roll, pitch are 0 by definition of base_footprint
   // (variance 0, which RViz needs to draw a 2D ellipse); velocities a 2D
   // estimate does not estimate get 1e6.
   const RobotState s = make_state();
@@ -209,9 +210,12 @@ TEST(OdometryConversionTest, FullCovarianceMapped)
   }
 
   EXPECT_DOUBLE_EQ(tc[0 * 6 + 0], p(kSpeed, kSpeed));
+  EXPECT_DOUBLE_EQ(tc[0 * 6 + 1], p(kSpeed, kSideSpeed));
+  EXPECT_DOUBLE_EQ(tc[1 * 6 + 1], p(kSideSpeed, kSideSpeed));
+  EXPECT_DOUBLE_EQ(tc[1 * 6 + 5], p(kSideSpeed, kYawRate));
   EXPECT_DOUBLE_EQ(tc[0 * 6 + 5], p(kSpeed, kYawRate));
   EXPECT_DOUBLE_EQ(tc[5 * 6 + 5], p(kYawRate, kYawRate));
-  for (int i : {1, 2, 3, 4}) {
+  for (int i : {2, 3, 4}) {
     EXPECT_DOUBLE_EQ(tc[i * 6 + i], kUnestimatedVariance);
   }
 }

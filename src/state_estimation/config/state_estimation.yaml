@@ -27,6 +27,8 @@ state_estimation:
       accel_no_imu: 4.0             # (m/s^2)^2/s when the IMU is stale (TBD)
       yaw_accel: 1.0                # (rad/s^2)^2/s (TBD)
       distance: 1.0e-3              # m^2/m along-track, varying wheel scale / scrub (TBD)
+    no_slip:
+      lateral_speed_stddev: 0.02      # m/s: rear axle sideways motion allowed while gripping (TBD)
     slip:
       threshold: 0.3                # m/s, on top of 3 sigma of predicted speed (TBD)
       yaw_rate_margin: 0.2          # rad/s beyond the steering limit (TBD)

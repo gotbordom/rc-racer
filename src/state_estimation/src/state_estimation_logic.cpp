@@ -61,6 +61,7 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.slip_correction_time, "slip.correction_time");
   require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
   require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
+  require_positive(config.no_slip_lateral_speed_stddev, "no_slip.lateral_speed_stddev");
   require_positive(config.slip_accel_span, "slip.accel_span");
   require_positive(config.slip_accel_margin, "slip.accel_margin");
   require_positive(config.slip_accel_gain, "slip.accel_gain");
@@ -93,6 +94,7 @@ void StateEstimationLogic::reset()
   state_.covariance(kYaw, kYaw) = config_.initial_pose_variance;
   state_.covariance(kSpeed, kSpeed) = config_.initial_speed_variance;
   state_.covariance(kYawRate, kYawRate) = config_.initial_yaw_rate_variance;
+  state_.covariance(kSideSpeed, kSideSpeed) = config_.initial_speed_variance;
   last_good_ = state_;
 
   // Input ages describe the sensors, not the estimate, so they survive a
@@ -149,13 +151,35 @@ void StateEstimationLogic::predict(double dt)
   }
   lateral_sum_ = 0.0;
   lateral_samples_ = 0;
+  // Sideways: the IMU's lateral acceleration (at base_footprint; an IMU
+  // offset forward adds lever x yaw acceleration, ignored: 0 on the car).
+  // Without it, the no-slip value omega x v_x, so v_y doesn't change.
+  if (lateral_available_ && !status_.imu_stale) {
+    inputs.lateral_accel = predict_lateral_;
+    inputs.lateral_accel_noise_density = config_.accel_noise_density +
+      predict_accel_variance_ * dt;
+  } else {
+    inputs.lateral_accel = state_.mean(kYawRate) * state_.mean(kSpeed);
+    inputs.lateral_accel_noise_density = config_.accel_noise_density_no_imu;
+  }
 
   fusion_->predict(state_, *frame_, inputs, dt);
+  // No-slip constraint (spec §6.1): the rear axle doesn't move sideways,
+  // v_y = omega x rear_axle_offset, held at no_slip_lateral_speed_stddev. It
+  // is a pseudo-measurement of v_y alone, at the current yaw rate: the gyro
+  // measures omega directly, and a constraint on both would let an error in
+  // the lateral acceleration leak into the yaw rate (seen in the node test:
+  // 0.168 rad/s for a 0.2 rad/s gyro, with a lateral reading of 0).
+  fusion_->update(
+    state_, kSideSpeed, state_.mean(kYawRate) * frame_->rear_axle_offset(),
+    config_.no_slip_lateral_speed_stddev * config_.no_slip_lateral_speed_stddev);
   apply_pending_correction(dt);
   guard_numerics();
 
   elapsed_ += dt;
-  accel_integral_ += inputs.forward_accel * dt;
+  // The forward speed's own rate of change, v_x' = a_x + omega x v_y: what
+  // the slip windows compare the wheel against.
+  accel_integral_ += (inputs.forward_accel + state_.mean(kYawRate) * state_.mean(kSideSpeed)) * dt;
   lateral_integral_ += predict_lateral_ * dt;
   centripetal_integral_ += last_wheel_speed_ * last_yaw_rate_ * dt;
   speed_history_.push_back(
@@ -290,10 +314,14 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
   // Specific force on a body pitched nose-down by theta at rest reads
   // -g * sin(theta) on x; add it back to get the real acceleration.
   const double pitch = imu.pitch.value_or(0.0);
-  // Lever arm from the point with no sideways motion (rear axle) to the IMU.
-  const double lever = frame_->rear_axle_offset() + imu.forward_offset;
+  // At base_footprint, the point the state describes: an IMU ahead of it
+  // feels -omega^2 x its offset forward, which is not acceleration there.
+  // (The rear axle's no-sideslip effect is the state's omega x v_y now.)
   forward_accel_ = imu.forward_specific_force + kGravity * std::sin(pitch) +
-    imu.yaw_rate * imu.yaw_rate * lever;
+    imu.yaw_rate * imu.yaw_rate * imu.forward_offset;
+  // The understeer check compares the IMU's own lateral reading with the
+  // no-slip kinematics at its mount: its lever is from the rear axle.
+  const double lever = frame_->rear_axle_offset() + imu.forward_offset;
   const double gravity_gain = kGravity * std::cos(pitch);  // d(accel) / d(pitch)
   forward_accel_variance_ = imu.forward_specific_force_variance +
     (imu.pitch ? gravity_gain * gravity_gain * imu.pitch_variance : 0.0);

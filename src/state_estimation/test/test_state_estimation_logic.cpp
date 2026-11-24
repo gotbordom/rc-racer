@@ -107,6 +107,28 @@ TEST(StateEstimationLogicTest, TracksConstantTurnFromNoisySensors)
   EXPECT_TRUE(covariance_is_valid(s.covariance));
 }
 
+TEST(StateEstimationLogicTest, SideSpeedFollowsTheNoSlipKinematics)
+{
+  // Feature 2.5, step 1: in a turn that grips, base_footprint slides
+  // sideways at omega x rear_axle_offset (0.192 m), as the bicycle model has
+  // it. The no-slip constraint holds v_y there, and /odom reports it.
+  StateEstimationLogic logic;
+  const double v = 2.0;
+  const double omega = 1.0;
+  for (int i = 0; i < 200; ++i) {
+    logic.predict(kDt);
+    for (int k = 0; k < 2; ++k) {
+      // Ahead of the rear axle the IMU reads -omega^2 x lever forward and
+      // omega x v sideways in a steady turn.
+      logic.update_imu(turn_sample(omega, omega * v, -omega * omega * 0.192));
+    }
+    logic.update_wheel_speed(wheel_sample(v));
+  }
+  EXPECT_NEAR(logic.state().mean(kSideSpeed), omega * 0.192, 0.01);
+  EXPECT_NEAR(logic.state().mean(kSpeed), v, 0.02);
+  EXPECT_FALSE(logic.status().slip_detected);
+}
+
 TEST(StateEstimationLogicTest, UpdatesShrinkVelocityVariance)
 {
   StateEstimationLogic logic;
@@ -407,10 +429,13 @@ TEST(StateEstimationLogicTest, OutAndBackDifferentScaleInReverseIsCovered)
 TEST(StateEstimationLogicTest, CovarianceGrowsWithoutUpdates)
 {
   // REQ-GNC-006: with no inputs the estimate keeps going and says it is
-  // getting less sure.
+  // getting less sure. The first predict also applies the no-slip
+  // constraint, which takes the initial sideways-speed uncertainty (2.5), so
+  // the total is checked from there.
   StateEstimationLogic logic;
   logic.update_wheel_speed(wheel_sample(1.0));
   logic.update_imu(imu_sample(0.2));
+  logic.predict(kDt);
 
   double trace = logic.state().covariance.trace();
   double pos_var = logic.state().covariance(kX, kX) + logic.state().covariance(kY, kY);

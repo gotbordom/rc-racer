@@ -65,7 +65,7 @@ DEFAULT_WORLD = 'empty_course.world'
 SHUTDOWN_TOLERATED = {'ign': {-9}, 'parameter_bridge': {-11}}
 STEP_KEYS = {
     'duration', 'speed', 'speed_end', 'steer', 'expect_slip', 'expect_slip_within',
-    'min_consistent_fraction',
+    'expect_slip_after_gap', 'min_consistent_fraction',
 }
 CHECK_KEYS = {
     'max_position_error', 'final_position_error', 'max_yaw_error_deg',
@@ -183,6 +183,22 @@ def first_slip_after(health, start):
     return next((h.t for h in health if h.t >= start and h.slip_events > baseline), None)
 
 
+def first_truth_gap(wheel, body, start, end, gap):
+    """Return when the true body and wheel speeds first differ by more than gap in [start, end].
+
+    wheel and body are [(t, v)] (truth); each body sample is paired with the
+    latest wheel sample before it. None if the gap is never reached.
+    """
+    i, latest_wheel = 0, None
+    for t, v_body in body:
+        while i < len(wheel) and wheel[i][0] <= t:
+            latest_wheel = wheel[i][1]
+            i += 1
+        if start <= t <= end and latest_wheel is not None and abs(v_body - latest_wheel) > gap:
+            return t
+    return None
+
+
 def slip_events_between(health, start, end):
     """Slip events counted by health reports in [start, end]."""
     before = [h.slip_events for h in health if h.t < start]
@@ -192,7 +208,7 @@ def slip_events_between(health, start, end):
     return max(during) - (before[-1] if before else 0)
 
 
-def run_checks(checks, steps, windows, samples, health):
+def run_checks(checks, steps, windows, samples, health, recording):
     """Apply the scenario's checks; return (metrics lines, failures)."""
     metrics, failures = [], []
 
@@ -259,6 +275,22 @@ def run_checks(checks, steps, windows, samples, health):
                 check(first - start <= limit + DIAGNOSTICS_LAG_S,
                       f'slip in step {i} detected {first - start:.2f} s after it began '
                       f'(limit {limit} s)')
+        if 'expect_slip_after_gap' in step:
+            # Timed from the slide itself (VAL-006): how big a slide is varies
+            # between runs, so "within X s of the step starting" is flaky.
+            gap, within = step['expect_slip_after_gap']['gap'], step['expect_slip_after_gap']['within']
+            t_gap = first_truth_gap(recording.wheel, recording.body, start, end, gap)
+            if t_gap is None:
+                metrics.append(f'slide in step {i}         never {gap} m/s (wheel vs body): '
+                               'nothing to detect')
+            else:
+                first = first_slip_after(health, start)
+                late = None if first is None else first - t_gap
+                metrics.append(f'slide in step {i}         {gap} m/s at {t_gap - start:.2f} s; slip '
+                               + (f'{late:+.2f} s after' if late is not None else 'never seen'))
+                check(late is not None and late <= within + DIAGNOSTICS_LAG_S,
+                      f'slip in step {i} not seen within {within} s of a {gap} m/s slide '
+                      f'({"never" if late is None else f"{late:+.2f} s"})')
         if 'min_consistent_fraction' in step:
             during = [s for s in samples if start <= s.t <= end]
             fraction = sum(s.consistent for s in during) / max(len(during), 1)
@@ -331,7 +363,7 @@ class TestScenario(unittest.TestCase):
         samples = compare(recording.odom, recording.history, origin)
         self.assertGreater(len(samples), 100, 'too few /odom samples')
         metrics, failures = run_checks(
-            SCENARIO['checks'], SCENARIO['steps'], windows, samples, health)
+            SCENARIO['checks'], SCENARIO['steps'], windows, samples, health, recording)
         try:
             os.makedirs(os.path.dirname(TRACE_FILE), exist_ok=True)
             with open(TRACE_FILE, 'w') as f:

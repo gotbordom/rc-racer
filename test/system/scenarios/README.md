@@ -16,6 +16,9 @@ steps:                      # open-loop commands through steering_relay, 20 Hz
     steer: 0.0              # fraction of full lock, -1 (right) to +1 (left)
     expect_slip: true       # optional: a slip event must be counted in this step
     expect_slip_within: 0.5 # optional: ... and within this many s of its start
+    expect_slip_after_gap: {gap: 0.15, within: 0.3}  # optional: slip seen within `within` s of the
+                            # true body and wheel speeds first differing by `gap` m/s (passes, noted,
+                            # if the slide never gets that big)
     min_consistent_fraction: 0.95   # optional: inside 3 sigma during this step
 checks:                     # every check is optional
   max_position_error: 0.3   # m, against truth, whole run

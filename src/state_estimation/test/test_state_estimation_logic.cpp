@@ -941,6 +941,33 @@ TEST(StateEstimationLogicTest, BumpIsNotAPinnedStop)
   EXPECT_NEAR(logic.state().mean(kX) - x0, 152 * kDt, 0.1);
 }
 
+TEST(StateEstimationLogicTest, SlipEndingKeepsOdomContinuous)
+{
+  // The first trusted wheel sample after an IMU-only stretch moves the
+  // position too, through its correlation with the speed. Spread out, not
+  // in one step (2.5: 0.16 m at once in VAL-004).
+  StateEstimationLogic logic;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+  }
+  for (int i = 0; i < 75; ++i) {  // 1.5 s of wheel spin: IMU-only, which
+    cycle(logic, imu_sample(0.0, 0.2), 2.5);  // drifts (a 0.2 m/s^2 bias)
+  }
+  ASSERT_TRUE(logic.status().slip_detected);
+  double max_jump = 0.0;
+  double last_x = logic.state().mean(kX);
+  for (int i = 0; i < 100; ++i) {  // grip again: the slip ends
+    cycle(logic, imu_sample(0.0), 1.0);
+    const double x = logic.state().mean(kX);
+    max_jump = std::max(max_jump, std::abs(x - last_x - logic.state().mean(kSpeed) * kDt));
+    last_x = x;
+  }
+  ASSERT_FALSE(logic.status().slip_detected);
+  // The scenarios' continuity limit; at once it was 0.25 m. Spread over
+  // 0.5 s, the ~0.25 m correction is ~1 cm per step on its own.
+  EXPECT_LT(max_jump, 0.05);
+}
+
 TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)
 {
   // A launch slip that is caught late and ends soon after: one slip event,

@@ -545,6 +545,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
       correct_window_retroactively(*reference);
     }
   }
+  const bool slip_ended = status_.slip_detected && !slipping;
   status_.slip_detected = slipping;
   if (!slipping) {
     after_impact_ = false;
@@ -571,7 +572,19 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   }
   status_.wheel_variance_used = status_.slip_detected ?
     wheel.variance * config_.slip_variance_scale : wheel.variance + early_variance;
+  const Eigen::Vector2d before(state_.mean(kX), state_.mean(kY));
   fusion_->update(state_, kSpeed, wheel.speed, status_.wheel_variance_used);
+  if (slip_ended) {
+    // The first trusted wheel sample after an IMU-only stretch also moves
+    // the position, through its correlation with the speed: right, but at
+    // once (0.16 m in one step in VAL-004). Spread that part like the other
+    // corrections, so odom stays continuous; the speed is corrected now.
+    const Eigen::Vector2d moved = Eigen::Vector2d(state_.mean(kX), state_.mean(kY)) - before;
+    state_.mean(kX) = before.x();
+    state_.mean(kY) = before.y();
+    pending_correction_ -= moved;
+    correction_time_left_ = config_.slip_correction_time;
+  }
   guard_numerics();
   last_wheel_speed_ = wheel.speed;
   if (!speed_history_.empty()) {  // after the update

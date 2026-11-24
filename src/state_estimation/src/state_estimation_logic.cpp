@@ -104,11 +104,20 @@ void StateEstimationLogic::predict(double dt)
     inputs.forward_accel = 0.0;
     inputs.accel_noise_density = config_.accel_noise_density_no_imu;
   } else {
-    inputs.forward_accel = forward_accel_;
+    // The average of the IMU samples since the last predict (the last one's
+    // if none arrived), so none is dropped.
+    if (accel_samples_ > 0) {
+      predict_accel_ = accel_sum_ / accel_samples_;
+      predict_accel_variance_ = accel_variance_sum_ / accel_samples_;
+    }
+    inputs.forward_accel = predict_accel_;
     // Per-sample variance sigma^2 held for dt gives sigma^2 * dt^2 on v,
     // i.e. a density of sigma^2 * dt.
-    inputs.accel_noise_density = config_.accel_noise_density + forward_accel_variance_ * dt;
+    inputs.accel_noise_density = config_.accel_noise_density + predict_accel_variance_ * dt;
   }
+  accel_sum_ = 0.0;
+  accel_variance_sum_ = 0.0;
+  accel_samples_ = 0;
 
   fusion_->predict(state_, *frame_, inputs, dt);
   guard_numerics();
@@ -164,6 +173,9 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
   const double gravity_gain = kGravity * std::cos(pitch);  // d(accel) / d(pitch)
   forward_accel_variance_ = imu.forward_specific_force_variance +
     (imu.pitch ? gravity_gain * gravity_gain * imu.pitch_variance : 0.0);
+  accel_sum_ += forward_accel_;
+  accel_variance_sum_ += forward_accel_variance_;
+  ++accel_samples_;
 
   last_yaw_rate_ = imu.yaw_rate;
   fusion_->update(state_, kYawRate, imu.yaw_rate, imu.yaw_rate_variance);

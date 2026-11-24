@@ -198,6 +198,14 @@ private:
 
   double forward_accel_{0.0};           ///< gravity removed, from the last IMU sample
   double forward_accel_variance_{0.0};
+  /// IMU samples since the last predict, averaged there: the IMU runs faster
+  /// than predict, and using only the latest sample drops the others (a
+  /// short jolt could lose half of itself).
+  double accel_sum_{0.0};
+  double accel_variance_sum_{0.0};
+  int accel_samples_{0};
+  double predict_accel_{0.0};           ///< the average used by the last predict
+  double predict_accel_variance_{0.0};
 
   /// For the windowed slip check: per predict step, the time, the speed
   /// estimate and the running integral of the acceleration input.

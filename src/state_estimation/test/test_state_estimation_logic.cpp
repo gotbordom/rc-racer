@@ -480,6 +480,58 @@ TEST(StateEstimationLogicTest, WheelSpinIsDetectedAndDistrusted)
   EXPECT_DOUBLE_EQ(logic.status().wheel_variance_used, kWheelStd * kWheelStd);
 }
 
+TEST(StateEstimationLogicTest, ImuSamplesBetweenPredictsAreAveraged)
+{
+  // Regression (2026-11-24, L2 sim loop): predict used only the latest IMU
+  // acceleration, and the IMU runs at twice the predict rate, so every other
+  // sample was dropped. A short real jolt (+/-30 m/s^2 for 10 ms each way, as
+  // the wheels regain grip after a launch slip) could lose its second half:
+  // +0.3 m/s on a speed that, while slipping, follows the IMU alone.
+  // Here the two samples per cycle are +2 then 0 m/s^2: 1 m/s^2 on average.
+  StateEstimationLogic logic;
+  logic.update_wheel_speed(wheel_sample(0.0));
+  for (int i = 0; i < 50; ++i) {  // 1 s, no wheel odometry
+    logic.predict(kDt);
+    logic.update_imu(imu_sample(0.0, 2.0));
+    logic.update_imu(imu_sample(0.0, 0.0));
+  }
+  logic.predict(kDt);  // applies the last cycle's samples
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.03);
+}
+
+TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)
+{
+  // A launch slip that is caught late and ends soon after: one slip event,
+  // and the speed settles on the true 1 m/s without a second, false slip.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {  // at rest, settled
+    cycle(logic, imu_sample(0.0), 0.0);
+  }
+  // Launch: the body accelerates at 2 m/s^2 with the wheel spinning 0.45 m/s
+  // ahead of it, until both reach 1 m/s. The estimate follows the wheel part
+  // of the way before the windowed check catches it; the slip then ends
+  // soon after, while those wheel-following samples are still in the window.
+  double body = 0.0;
+  while (body < 1.0) {
+    const double accel = std::min(2.0, (1.0 - body) / kDt);
+    body += accel * kDt;
+    cycle(logic, imu_sample(0.0, accel), std::min(1.0, body + 0.45));
+  }
+  ASSERT_EQ(logic.status().slip_events, 1u);
+  // Cruise at 1 m/s, wheel and IMU agreeing, for 2 s.
+  double max_speed = 0.0;
+  for (int i = 0; i < 100; ++i) {
+    cycle(logic, imu_sample(0.0), 1.0);
+    if (i > 15) {
+      max_speed = std::max(max_speed, logic.state().mean(kSpeed));
+    }
+  }
+  EXPECT_EQ(logic.status().slip_events, 1u) << "a second, false slip";
+  EXPECT_FALSE(logic.status().slip_detected);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 1.0, 0.05);
+  EXPECT_LT(max_speed, 1.1);
+}
+
 TEST(StateEstimationLogicTest, CrashSpinDownIsDetected)
 {
   // Regression from a manual sim test (turbo into a bench): the body stops

@@ -1,0 +1,20 @@
+# Turbo straight and hard stop, forward then reverse, at full grip. The
+# drive's 3 m/s^2 ramp is below the grip limit at mu 1.0 (~3.3 m/s^2), so
+# nothing slips: any slip event is a false one.
+id: VAL-001
+title: Turbo straight and hard stop, forward and reverse (mu 1.0)
+tire_mu: 1.0
+steps:
+  - {duration: 4.0, speed: 3.0}
+  - {duration: 3.0, speed: 0.0}
+  - {duration: 4.0, speed: -3.0}
+  - {duration: 3.0, speed: 0.0}
+checks:
+  max_position_error: 0.3
+  final_position_error: 0.3
+  max_yaw_error_deg: 2.0
+  min_consistent_fraction: 0.95
+  slip_events: {max: 0}
+  never_error: true
+  ends_ok: true
+  settles: true

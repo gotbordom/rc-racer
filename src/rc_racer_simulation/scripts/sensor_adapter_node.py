@@ -17,6 +17,7 @@ noise model at all. Logic lives in rc_racer_simulation.sensor_noise.
 
 import rclpy
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
@@ -135,8 +136,13 @@ def main():
     node = SensorAdapterNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError:
+        # A message take that races the shutdown raises here; only a
+        # failure while ROS is still running is a real error.
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         rclpy.try_shutdown()

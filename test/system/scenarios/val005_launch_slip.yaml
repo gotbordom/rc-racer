@@ -1,0 +1,19 @@
+# Full-throttle launch at mu 0.5: the drive ramps the wheel at 3 m/s^2, the
+# tyres hold ~1.7 m/s^2, so the wheel spins up ahead of the body. Slip must
+# be seen within 0.5 s, health recover to OK, and the error stay bounded.
+# The covariance is overconfident until detection: that is VAL-017.
+# Runs 2026-11-23: detected after ~0.45 s; max error 0.11-0.20 m.
+id: VAL-005
+title: Full-throttle launch slip is detected and recovered (mu 0.5)
+tire_mu: 0.5
+steps:
+  - {duration: 3.0, speed: 3.0, expect_slip_within: 0.5}
+  - {duration: 2.0, speed: 3.0, speed_end: 0.0}
+  - {duration: 3.0, speed: 0.0}
+checks:
+  max_position_error: 0.3
+  final_position_error: 0.3
+  slip_events: {min: 1}
+  never_error: true
+  ends_ok: true
+  settles: true

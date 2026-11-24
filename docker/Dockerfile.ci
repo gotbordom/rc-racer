@@ -50,10 +50,11 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python test tools
+# Install Python test tools. Humble's launch_testing pytest plugin breaks
+# on pytest 8+ (its hooks take the removed py.path argument).
 RUN pip3 install --no-cache-dir \
-    pytest \
-    pytest-cov
+    "pytest<8" \
+    "pytest-cov<6"
 
 # Set up workspace
 WORKDIR /ros2_ws

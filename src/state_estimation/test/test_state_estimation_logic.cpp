@@ -12,6 +12,7 @@
 #include <cmath>
 #include <random>
 #include <stdexcept>
+#include <vector>
 
 #include "state_estimation/extended_kalman_filter.hpp"
 #include "state_estimation/state_estimation_logic.hpp"
@@ -259,6 +260,135 @@ TEST(StateEstimationLogicTest, DistanceNoiseGrowsAlongTrackOnly)
   const double added = logic.state().covariance(kX, kX) - without.state().covariance(kX, kX);
   EXPECT_NEAR(added, StateEstimationConfig{}.distance_noise_density * 50.0, 0.1 * 0.05);
   EXPECT_NEAR(logic.state().covariance(kY, kY), without.state().covariance(kY, kY), 1e-6);
+}
+
+// Out and back (SDP §3.6 VAL-016, issue #8): the published covariance
+// shrinks for a while when the car drives straight back.
+
+struct OutAndBackSample
+{
+  double true_x;
+  double error;        // estimate - truth, along x
+  double variance;     // published (estimate()) x variance
+  double scale_part;   // its wheel scale term, estimate() - state()
+};
+
+// Drive 1 m/s straight out for `cruise_cycles`, stop and drive straight
+// back to the start, accelerating at 1 m/s^2 with a matching IMU reading.
+// The wheel reads (1 + bias_forward) * v forward and (1 + bias_reverse) * v
+// in reverse.
+std::vector<OutAndBackSample> out_and_back(
+  StateEstimationLogic & logic, double bias_forward, double bias_reverse, int cruise_cycles)
+{
+  std::mt19937 rng(3);
+  std::normal_distribution<double> gyro(0.0, kGyroStd);
+  std::normal_distribution<double> accel(0.0, kAccelStd);
+  std::normal_distribution<double> wheel(0.0, kWheelStd);
+  const int ramp = 50;  // 1 s from 0 to 1 m/s
+  std::vector<double> speeds;
+  for (int i = 1; i <= ramp; ++i) {
+    speeds.push_back(i * kDt);
+  }
+  speeds.insert(speeds.end(), cruise_cycles, 1.0);
+  for (int i = 1; i <= 2 * ramp; ++i) {  // through 0 to -1 m/s
+    speeds.push_back(1.0 - i * kDt);
+  }
+  speeds.insert(speeds.end(), cruise_cycles, -1.0);
+  for (int i = 1; i <= ramp; ++i) {
+    speeds.push_back(-1.0 + i * kDt);
+  }
+
+  std::vector<OutAndBackSample> samples;
+  double true_x = 0.0;
+  double previous = 0.0;
+  for (double v : speeds) {
+    true_x += 0.5 * (previous + v) * kDt;
+    const double a = (v - previous) / kDt;
+    previous = v;
+    const double bias = v >= 0.0 ? bias_forward : bias_reverse;
+    logic.predict(kDt);
+    logic.update_imu(imu_sample(gyro(rng), a + accel(rng)));
+    logic.update_imu(imu_sample(gyro(rng), a + accel(rng)));
+    logic.update_wheel_speed(wheel_sample((1.0 + bias) * v + wheel(rng)));
+    const RobotState e = logic.estimate();
+    samples.push_back(
+      {true_x, e.mean(kX) - true_x, e.covariance(kX, kX),
+        e.covariance(kX, kX) - logic.state().covariance(kX, kX)});
+  }
+  return samples;
+}
+
+const OutAndBackSample & turn_point(const std::vector<OutAndBackSample> & samples)
+{
+  return *std::max_element(
+    samples.begin(), samples.end(),
+    [](const auto & a, const auto & b) {return a.true_x < b.true_x;});
+}
+
+// The return leg's sample nearest true_x.
+const OutAndBackSample & on_the_way_back(
+  const std::vector<OutAndBackSample> & samples, double true_x)
+{
+  const auto turn = std::max_element(
+    samples.begin(), samples.end(),
+    [](const auto & a, const auto & b) {return a.true_x < b.true_x;});
+  return *std::min_element(
+    turn, samples.end(),
+    [true_x](const auto & a, const auto & b) {
+      return std::abs(a.true_x - true_x) < std::abs(b.true_x - true_x);
+    });
+}
+
+TEST(StateEstimationLogicTest, OutAndBackCovarianceShrinksThenGrows)
+{
+  // #8: variance ~ s^2 x^2 (scale) + q d (distance noise, d travelled). On
+  // the way back it falls while 2 s^2 x > q, so to x = q / (2 s^2) = 5 m,
+  // then grows again: what the owner saw.
+  StateEstimationLogic logic;
+  const StateEstimationConfig cfg;
+  const auto samples = out_and_back(logic, 0.0, 0.0, 450);  // ~10 m out
+  const double x_min = cfg.distance_noise_density /
+    (2.0 * cfg.wheel_scale_stddev * cfg.wheel_scale_stddev);
+  ASSERT_NEAR(x_min, 5.0, 1e-9);
+  const OutAndBackSample & turn = turn_point(samples);
+  const OutAndBackSample & lowest = on_the_way_back(samples, x_min);
+  ASSERT_GT(turn.true_x, 9.5);
+  EXPECT_LT(lowest.variance, 0.95 * turn.variance);
+  EXPECT_LT(lowest.variance, 0.95 * samples.back().variance);
+  EXPECT_LT(on_the_way_back(samples, 7.5).variance, turn.variance);
+  EXPECT_GT(on_the_way_back(samples, 2.5).variance, lowest.variance);
+}
+
+TEST(StateEstimationLogicTest, OutAndBackScaleErrorCancelsAsTheCovarianceSays)
+{
+  // #8, question 2: with the same 1 % over-read both ways the true error
+  // shrinks back to ~0 at the start, as the scale term does, and stays
+  // inside 3 sigma all the way. Distance noise off, to check the scale term.
+  StateEstimationConfig cfg;
+  cfg.distance_noise_density = 1e-12;
+  StateEstimationLogic logic(cfg);
+  const auto samples = out_and_back(logic, 0.01, 0.01, 450);
+  const OutAndBackSample & turn = turn_point(samples);
+  EXPECT_NEAR(turn.error, 0.01 * turn.true_x, 0.03);
+  EXPECT_LT(std::abs(samples.back().error), 0.2 * turn.error);
+  EXPECT_LT(samples.back().scale_part, 0.05 * turn.scale_part);
+  for (const auto & s : samples) {
+    EXPECT_LT(std::abs(s.error), 3.0 * std::sqrt(s.variance)) << "at x = " << s.true_x;
+  }
+}
+
+TEST(StateEstimationLogicTest, OutAndBackDifferentScaleInReverseIsCovered)
+{
+  // #8, question 3: if the scale differs in reverse, the error does not
+  // cancel while the scale term still shrinks. Worst case here: 1 % over
+  // forward, 1 % under in reverse, so the car is 2 % of the leg (0.2 m)
+  // out at the start. The distance noise must still cover it.
+  StateEstimationLogic logic;
+  const auto samples = out_and_back(logic, 0.01, -0.01, 450);
+  EXPECT_NEAR(samples.back().error, 0.02 * turn_point(samples).true_x, 0.05);
+  for (const auto & s : samples) {
+    EXPECT_LT(std::abs(s.error), 3.0 * std::sqrt(s.variance)) << "at x = " << s.true_x;
+  }
 }
 
 // ---------------------------------------------------------------------------

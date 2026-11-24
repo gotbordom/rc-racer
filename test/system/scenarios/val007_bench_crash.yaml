@@ -1,0 +1,27 @@
+# Drive into the bench on the practice course at 1 m/s, push against it
+# for ~4 s, then stop. The body stops at the bench while the driven wheels
+# spin. The impact itself is not seen by the sim IMU (DEV-07). Checked
+# here: the drive reaches the bench, the slip safety nets end the slip once
+# the wheels stop, and nothing gets stuck. While pinned the estimate drives
+# on at wheel speed (~1 m per second of pushing): that is VAL-019.
+# Path: one left arc, radius 104 m, from the spawn point to the bench's
+# face at (40, 8): clear of rock_1 by 2.2 m and tree_1 by 5 m.
+# Steering fraction for that arc: atan(0.384 / 104) / 0.52 = 0.0071.
+# Runs 2026-11-24 (4): end (39.50, 7.68); estimate 4.30-4.36 m past the
+# bench; one slip event (when the wheels stop); heading within 0.52 deg.
+id: VAL-007
+title: Drive into the bench, slip ends, never stuck (mu 0.5)
+world: practice_course.world
+tire_mu: 0.5
+steps:
+  - {duration: 1.0, speed: 0.0, speed_end: 1.0, steer: 0.0071}
+  - {duration: 44.0, speed: 1.0, steer: 0.0071}
+  - {duration: 3.0, speed: 0.0}
+checks:
+  true_end_near: {x: 39.5, y: 7.7, within: 1.0}
+  max_position_error: 5.5
+  max_yaw_error_deg: 2.0
+  slip_events: {min: 1}
+  never_error: true
+  ends_ok: true
+  settles: true

@@ -49,6 +49,7 @@
 
   <!-- All packages under test -->
   <test_depend>state_estimation</test_depend>
+  <test_depend>rc_racer_bringup</test_depend>
   <test_depend>localization</test_depend>
   <test_depend>mapping</test_depend>
   <test_depend>object_detection</test_depend>

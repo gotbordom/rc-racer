@@ -1,0 +1,24 @@
+# The drive of VAL-004, checking the estimate is honest in a sideways
+# slide. Runs 2026-11-23: 1.5-1.76 m error at sigma <= 0.24 m, 24-29 %
+# inside 3 sigma. Causes: no lateral-velocity state (the slide is not
+# modelled), understeer is only caught by the slow windowed wheel check,
+# and once slip is declared the IMU-only speed runs away (to 4.4 m/s
+# against a true 2.6-2.9) until slip.max_duration ends it. When slip ends
+# the position can step ~7 cm in one sample (0.139 m in 20 ms at 3.3 m/s).
+id: VAL-018
+title: Estimate and covariance stay honest in a sideways slide (mu 0.5)
+tire_mu: 0.5
+steps:
+  - {duration: 3.0, speed: 0.0, speed_end: 3.0}
+  - {duration: 4.0, speed: 3.0, steer: 1.0}
+  - {duration: 1.0, speed: 3.0}
+  - {duration: 4.0, speed: 3.0, steer: -1.0}
+  - {duration: 2.0, speed: 3.0, speed_end: 0.0}
+  - {duration: 3.0, speed: 0.0}
+checks:
+  min_consistent_fraction: 0.95
+  never_error: true
+  ends_ok: true
+expected_fail:
+  reason: "no lateral-velocity state; slide caught late; IMU fallback runs away; position steps when slip ends (VEH.GNC.SE spec Open Item 7)"
+  failing: ["inside 3 sigma", "estimate jumped"]

@@ -66,3 +66,39 @@ At shutdown every process must exit 0, except that Gazebo may be killed
 Run one: `make test-system FILTER=test_scenario_<name>`. Each writes
 `scenario_<name>_trace.csv` (truth against estimate) to
 `test/system/results/`.
+
+## Watching a scenario
+
+`make replay` drives a running `make sim` from a scenario file, so you can
+watch it in Gazebo and RViz. Nothing is checked, and the car starts wherever
+it is: **restart `make sim` before each replay**, with the scenario's world
+and μ. Run `make se-watch` in a third terminal to see slip warnings
+(health is 1 Hz here; the test uses 10 Hz). For pass/fail, run the test:
+`make test-system FILTER=test_scenario_<name>`. (A one-command version
+with the GUI on is follow-up #13.)
+
+```
+make sim WORLD=<world> MU=<mu>      # terminal 1, fresh each time
+make se-watch                       # terminal 2
+make replay NAME=<name>             # terminal 3
+```
+
+In RViz, the `/odom` arrow and covariance ellipse are the estimate;
+Gazebo's car is the truth. "Follows" below means the arrow stays on the car.
+
+| Scenario | `make sim` | What to look for | Known bad (expected-fail) |
+|---|---|---|---|
+| `val001_turbo_straight_stop` | `WORLD=empty_course.world MU=1.0` | Turbo straight and hard stop, both ways: no slip WARN in `se-watch`, the arrow follows the car, the speed settles to 0 at each stop | - |
+| `val002_reverse_turns` | `WORLD=empty_course.world` | Reverse with turns: the arrow points the way the car faces (not the way it moves) and turns with it | - |
+| `val003_full_lock_circles` | `WORLD=empty_course.world` | Full-lock circles, left then right: no slip WARN (yaw rate at the steering limit), the arrow stays on the car around each circle | - |
+| `val004_full_lock_turbo` | `WORLD=empty_course.world` | Turbo at full lock: the car slides wide (understeer). WARN 2-3 s into each turn, back to OK, never stuck | VAL-018: the arrow drifts 1-2 m off the car while the ellipse stays small |
+| `val018_sideways_slide_honest` | `WORLD=empty_course.world` | The same drive as VAL-004 | The same: the estimate is metres off with a small ellipse |
+| `val005_launch_slip` | `WORLD=empty_course.world` | Full-throttle launch: the wheels spin up; WARN within ~0.5 s, back to OK; the arrow ends ~0.1-0.2 m ahead of the car | VAL-017: the arrow pulls ahead in the first ~0.5 s with a tiny ellipse |
+| `val017_launch_slip_covariance` | `WORLD=empty_course.world` | The same launch as VAL-005 | The same as VAL-005 |
+| `val006_braking_slip` | `WORLD=empty_course.world` | Hard stop from 3 m/s: the car slides on past where its wheels stop | VAL-006: no WARN, or only ~1 s late |
+| `val016_out_and_back` | `WORLD=empty_course.world` | 10 m out and straight back: the ellipse grows on the way out, **shrinks** for the first ~5 m back, then grows again (#8). The arrow stays on the car | - |
+| `val007_bench_crash` | (default: practice course) | Arc into the bench, push ~4 s, stop. The car hits the bench and stays; WARN once the wheels stop; back to OK, settles | VAL-019: while pinned the arrow drives on through the bench, ~4 m |
+| `val019_pinned_estimate_stops` | (default: practice course) | The same drive as VAL-007 | The same as VAL-007 |
+
+Pairs such as VAL-004/018 drive the same steps and differ only in what
+their tests check, so watching one shows both.

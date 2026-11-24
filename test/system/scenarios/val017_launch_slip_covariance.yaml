@@ -3,6 +3,8 @@
 # spinning wheel: the estimate runs ahead (1.2 m/s against a true 0.75) and
 # builds ~0.1 m of along-track error while the reported sigma is ~0.02 m.
 # Runs 2026-11-23: ~16 % of the first second's samples outside 3 sigma.
+# Fixed 2026-11-24 (2.4): on detection the position is moved back by what
+# the wheel added over the window, spread over 0.5 s: 96.1 % inside.
 id: VAL-017
 title: Covariance stays honest while a launch slip develops (mu 0.5)
 tire_mu: 0.5
@@ -14,6 +16,3 @@ steps:
 checks:
   never_error: true
   ends_ok: true
-expected_fail:
-  reason: "the covariance is overconfident until the slip is detected (VEH.GNC.SE spec Open Item 6)"
-  failing: "step 0: only"

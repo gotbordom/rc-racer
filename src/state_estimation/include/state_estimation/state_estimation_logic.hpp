@@ -32,6 +32,12 @@ struct ImuMeasurement
   /// Forward specific force, m/s^2, INCLUDING gravity (ICD-SNS-GNC).
   double forward_specific_force{0.0};
   double forward_specific_force_variance{0.0};  ///< (m/s^2)^2
+  /// Lateral (left) specific force, m/s^2, including gravity. In a turn
+  /// without slip it is yaw rate x speed (plus the lever arm term): the
+  /// understeer check compares it with what the wheel speed implies.
+  double lateral_specific_force{0.0};
+  /// (m/s^2)^2; 0 = not provided, and the understeer check is skipped.
+  double lateral_specific_force_variance{0.0};
   /// Pitch from the IMU's orientation (REP-103: positive = nose down), used
   /// to remove gravity. Unset when the IMU gives no orientation; the ground
   /// is then assumed level.
@@ -39,6 +45,9 @@ struct ImuMeasurement
   /// rad^2. Pitch noise becomes acceleration noise (g * cos(pitch))^2 *
   /// pitch_variance through gravity removal (0.02 rad is ~0.2 m/s^2).
   double pitch_variance{0.0};
+  /// Roll (REP-103: positive = right side down), to remove gravity from the
+  /// lateral specific force; unset like pitch.
+  std::optional<double> roll;
   /// m, IMU position ahead of base_footprint (from TF). In a turn an
   /// accelerometer ahead of the no-sideslip point (rear axle) feels
   /// -omega^2 * lever on its forward axis, which is not acceleration.
@@ -109,6 +118,50 @@ struct StateEstimationConfig
   /// slipping wheel has no real pull (1e4 still dragged the estimate after
   /// a crash). TBD.
   double slip_variance_scale{1.0e6};
+  /// When the windowed check catches a slip, the position is moved back by
+  /// what the wheel added over the window (VAL-017). This share of that
+  /// correction is added as 1-sigma along-track uncertainty, as the window
+  /// start may itself have been partly off. TBD.
+  double slip_correction_uncertainty{0.3};
+  /// m/s^2. The windowed check counts a wheel slower than its IMU reference
+  /// as slip only while the IMU shows at least this much deceleration over
+  /// the recent half window: a driven wheel falls behind the car only while
+  /// braking. TBD.
+  double slip_braking_accel{0.5};
+  /// m/s. The windowed check's threshold for that case, a wheel
+  /// behind its reference while braking (on top of 3 sigma), tighter than
+  /// slip_threshold: a braking slide builds slowly (VAL-006). TBD.
+  double slip_braking_threshold{0.15};
+  /// s. The retroactive correction is applied over this long, so odom stays
+  /// continuous. TBD.
+  double slip_correction_time{0.5};
+  /// m/s^2. Understeer (a slide the yaw-rate check cannot see, VAL-004):
+  /// over slip_window, the measured lateral acceleration falls short of the
+  /// wheel speed x yaw rate by more than this. Checked only while turning
+  /// faster than slip_lateral_min_yaw_rate (rad/s). TBD.
+  double slip_lateral_threshold{0.5};
+  double slip_lateral_min_yaw_rate{0.3};
+  /// Before the slip decision (VAL-017): over the last slip_accel_span s,
+  /// the wheel's acceleration is compared with the IMU's. Beyond
+  /// slip_accel_margin (m/s^2, above the wheel's differenced noise) the
+  /// wheel's variance grows by (slip_accel_gain x excess)^2, the speed error
+  /// that mismatch could have built (s). A developing spin is distrusted
+  /// gradually instead of followed until the hard decision. TBD.
+  double slip_accel_span{0.2};
+  double slip_accel_margin{0.6};
+  double slip_accel_gain{0.5};
+  /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far
+  /// beyond braking) in any step of the last slip_impact_lookback s. After
+  /// one that took at least slip_pinned_fraction of the speed, with the IMU
+  /// quiet and the wheel disagreeing, the car is pinned: speed held at 0,
+  /// no max_duration release, until the IMU shows it has picked up
+  /// slip_pinned_speed (m/s), the wheels stop, or slip_pinned_max_duration
+  /// (s) passes. TBD.
+  double slip_impact_accel{8.0};
+  double slip_impact_lookback{0.25};
+  double slip_pinned_fraction{0.3};
+  double slip_pinned_speed{0.3};
+  double slip_pinned_max_duration{10.0};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -134,6 +187,14 @@ struct StateEstimationStatus
   /// Times slip started. Counted so a health report can warn about slip
   /// that came and went between reports.
   int slip_events{0};
+  /// Times the windowed check found its history stale (a wheel behind its
+  /// reference with no braking: left by a slip too small to catch) and
+  /// rebuilt it, instead of calling slip.
+  int stale_history_rebases{0};
+  /// The last wheel sample showed understeer (see slip_lateral_threshold).
+  bool understeer_detected{false};
+  /// Pinned against an obstacle after an impact (see slip_impact_accel).
+  bool pinned{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -174,14 +235,43 @@ public:
   const StateEstimationConfig & config() const {return config_;}
 
 private:
-  /// Estimate from slip_window ago plus the IMU acceleration since, and the
-  /// variance it had then; unset until a full window of fresh IMU exists.
+  /// The estimate from `age` ago (the newest history sample at least that
+  /// old) plus the IMU acceleration since, and the variance it had then;
+  /// unset until that much fresh IMU history exists.
   struct ReferenceSpeed
   {
     double speed;
     double variance;
+    std::size_t index;  ///< of the history sample it starts from
   };
-  std::optional<ReferenceSpeed> imu_reference_speed() const;
+  std::optional<ReferenceSpeed> imu_reference_speed(double age) const;
+
+  /// History older than sample `from` holds speeds the IMU path from it
+  /// contradicts (an earlier, undetected slip left them): rewrite them as
+  /// that sample's speed minus the IMU integral back to them.
+  void rebase_history_before(std::size_t from);
+
+  /// Restart the IMU-only speed from before an impact plus the IMU since.
+  void restart_from_impact();
+  /// On pinning: take back the distance driven since the impact.
+  void take_back_distance_since_impact();
+
+  /// Move the position by this step's share of a pending correction.
+  void apply_pending_correction(double dt);
+  Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
+  double correction_time_left_{0.0};
+  bool after_impact_{false};             ///< this slip started with or saw an impact
+  double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
+  double impact_time_{0.0};              ///< s (elapsed_), of the impact step
+  std::optional<double> pinned_since_;   ///< when it last became pinned
+  double pinned_accel_integral_{0.0};    ///< accel_integral_ when pinned
+
+  /// A slip caught by the windowed check: the estimate followed the wheel
+  /// since the window start, the last speed trusted. Rewrite the history as
+  /// the IMU path from there, move the position back by the distance the
+  /// wheel added on top of it, and grow the covariance by that correction's
+  /// uncertainty (VAL-017). Returns the correction (m, along track).
+  double correct_window_retroactively(const ReferenceSpeed & from);
 
 
   /// Restore the last good estimate if the current one is not finite.
@@ -198,6 +288,23 @@ private:
 
   double forward_accel_{0.0};           ///< gravity removed, from the last IMU sample
   double forward_accel_variance_{0.0};
+  /// IMU samples since the last predict, averaged there: the IMU runs faster
+  /// than predict, and using only the latest sample drops the others (a
+  /// short jolt could lose half of itself).
+  double accel_sum_{0.0};
+  double accel_variance_sum_{0.0};
+  int accel_samples_{0};
+  double predict_accel_{0.0};           ///< the average used by the last predict
+  double predict_accel_variance_{0.0};
+  /// Lateral acceleration, gravity removed: averaged between predicts too.
+  double lateral_sum_{0.0};
+  int lateral_samples_{0};
+  double predict_lateral_{0.0};
+  double lateral_integral_{0.0};
+  double centripetal_integral_{0.0};
+  double last_wheel_speed_{0.0};
+  double imu_lever_{0.0};               ///< m, rear axle to IMU, from the last sample
+  bool lateral_available_{false};       ///< the last IMU sample gave lateral force
 
   /// For the windowed slip check: per predict step, the time, the speed
   /// estimate and the running integral of the acceleration input.
@@ -207,6 +314,10 @@ private:
     double speed;
     double speed_variance;
     double accel_integral;
+    double lateral_integral;      ///< of the measured lateral acceleration
+    double centripetal_integral;  ///< of wheel speed x yaw rate
+    double yaw_rate;              ///< IMU, at this sample
+    double wheel_speed;           ///< the last wheel reading, at this sample
   };
   std::deque<SpeedSample> speed_history_;
   /// While slipping: since when the wheel has agreed again (hysteresis).

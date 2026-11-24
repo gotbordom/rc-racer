@@ -90,6 +90,8 @@ ImuMeasurement to_imu_measurement(
   imu.yaw_rate_variance = rotated_variance(msg.angular_velocity_covariance, r, 2);
   imu.forward_specific_force = (r * to_vector(msg.linear_acceleration)).x();
   imu.forward_specific_force_variance = rotated_variance(msg.linear_acceleration_covariance, r, 0);
+  imu.lateral_specific_force = (r * to_vector(msg.linear_acceleration)).y();
+  imu.lateral_specific_force_variance = rotated_variance(msg.linear_acceleration_covariance, r, 1);
 
   const Eigen::Quaterniond q_ref_imu(
     msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z);
@@ -99,6 +101,7 @@ ImuMeasurement to_imu_measurement(
     const Eigen::Matrix3d r_ref_base =
       (q_ref_imu.normalized() * base_from_imu.normalized().conjugate()).toRotationMatrix();
     imu.pitch = std::asin(std::clamp(-r_ref_base(2, 0), -1.0, 1.0));
+    imu.roll = std::atan2(r_ref_base(2, 1), r_ref_base(2, 2));
     // Orientation covariance is about the IMU's axes; rotate it to the car's
     // and take the pitch (y) axis.
     imu.pitch_variance = rotated_variance(msg.orientation_covariance, r, 1);

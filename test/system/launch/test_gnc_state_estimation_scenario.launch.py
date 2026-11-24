@@ -6,8 +6,8 @@ Scenario test: state_estimation on one scripted validation case (SDP §3.6).
 
 Runs the scenario file named by the SCENARIO_FILE environment variable
 (test/system/scenarios/<name>.yaml; CMake adds one test per file). Each run
-starts its own headless Gazebo on the empty course at the scenario's
-tire_mu, so one scenario cannot disturb the next.
+starts its own headless Gazebo on the scenario's world (default the empty
+course) at its tire_mu, so one scenario cannot disturb the next.
 
 The car is driven open-loop by the scenario's steps through the same
 steering_relay the pad uses: speed (m/s, optionally ramped) and steer (a
@@ -58,6 +58,7 @@ DIAGNOSTICS_LAG_S = 1.5 * DIAGNOSTICS_PERIOD_S
 # /odom samples beyond what its own speed explains (m). Scenarios may set
 # max_jump; the L2 loop at 1 m/s uses a plain 0.1 m step limit instead.
 MAX_JUMP = 0.05
+DEFAULT_WORLD = 'empty_course.world'
 GAZEBO_PROCESS = 'ign'       # launch's name for the Gazebo server process
 SIGKILLED = -9
 STEP_KEYS = {
@@ -121,13 +122,13 @@ def params_with_fast_diagnostics():
 
 @launch_testing.markers.keep_alive
 def generate_test_description():
-    """Launch the empty course at the scenario's tire_mu, state_estimation and the relay."""
+    """Launch the scenario's world at its tire_mu, state_estimation and the relay."""
     simulation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('rc_racer_simulation'), 'launch', 'simulation.launch.py')),
         launch_arguments={
             'headless': 'true',
-            'world': 'empty_course.world',
+            'world': SCENARIO.get('world', DEFAULT_WORLD),
             'tire_mu': str(SCENARIO['tire_mu']),
         }.items(),
     )

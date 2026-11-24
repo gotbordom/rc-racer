@@ -7,6 +7,7 @@ headless Gazebo on the empty course (`test_gnc_state_estimation_scenario`).
 ```yaml
 id: VAL-005                 # register row
 title: Full-throttle launch at mu 0.5
+world: empty_course.world   # optional, the default; recordings use the drive's world
 tire_mu: 0.5                # tyre friction (ground is 1.0; Gazebo uses the lower)
 steps:                      # open-loop commands through steering_relay, 20 Hz
   - duration: 4.0           # s, sim time
@@ -38,8 +39,25 @@ slip detection is timed to about 0.1 s. The
 continuity check always runs: an `/odom` sample may not move more than
 `max_jump` (0.05 m) beyond what the estimated speed explains.
 
-The car spawns at the origin facing +x. The world is a flat 100 x 100 m
-plane, so keep scenarios within about 40 m of the start.
+The car spawns at the origin facing +x. The empty course is a flat
+100 x 100 m plane, so keep scripted scenarios within about 40 m of the
+start.
+
+## Recording a drive
+
+With `make sim` running (restart it first, so the car is at the spawn
+point), `make record NAME=<name> ID=VAL-xxx TITLE='...'` records what you
+drive, pad or keyboard, until you press Enter. It writes
+`<name>.yaml` here with the world and `tire_mu` of the running sim, the
+steps (yaw rates turned back into steering fractions, unchanged stretches
+merged) and template checks. Then:
+1. say in the file what the case is, and set its real checks;
+2. `make test-system FILTER=test_scenario_<name>` to run it;
+3. `make replay NAME=<name>` to watch it drive the running sim.
+
+A replay is open-loop: small differences in the physics add up, so the
+car may not follow the recorded path exactly. Check properties, not the
+path.
 
 At shutdown every process must exit 0, except that Gazebo may be killed
 (it sometimes hangs, #12); a warning is printed when it is.

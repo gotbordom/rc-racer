@@ -78,6 +78,24 @@ se-deactivate: _sim-running ## Lifecycle: deactivate state_estimation (/odom sto
 se-activate: _sim-running ## Lifecycle: activate state_estimation (odom restarts at the car)
 	$(call ROS,ros2 lifecycle set /state_estimation activate)
 
+# --- Validation scenarios (SDP §3.6, test/system/scenarios/README.md) ----------
+
+SCENARIOS := test/system/scenarios
+ID    ?= VAL-xxx
+TITLE ?= Recorded manual drive
+
+record: _sim-running ## Record your drive as a scenario: NAME=<name> [ID=VAL-xxx TITLE=...] (Enter stops)
+	@test -n "$(NAME)" || { echo "usage: make record NAME=<name> [ID=VAL-xxx] [TITLE='...']"; exit 1; }
+	@test ! -e $(SCENARIOS)/$(NAME).yaml || { echo "$(SCENARIOS)/$(NAME).yaml exists: pick another NAME"; exit 1; }
+	$(call ROS,ros2 run rc_racer_bringup scenario_record.py --out /tmp/scenario_$(NAME).yaml --id '$(ID)' --title '$(TITLE)')
+	docker cp $(SIM):/tmp/scenario_$(NAME).yaml $(SCENARIOS)/$(NAME).yaml
+	@echo "Saved $(SCENARIOS)/$(NAME).yaml: fill in its checks, then make test-system FILTER=test_scenario_$(NAME)"
+
+replay: _sim-running ## Drive the running sim from a scenario to watch it: NAME=<name> (Ctrl+C stops)
+	@test -f $(SCENARIOS)/$(NAME).yaml || { echo "no $(SCENARIOS)/$(NAME).yaml (usage: make replay NAME=<name>)"; exit 1; }
+	docker cp $(SCENARIOS)/$(NAME).yaml $(SIM):/tmp/scenario_$(NAME).yaml
+	$(call ROS,ros2 run rc_racer_bringup scenario_replay.py /tmp/scenario_$(NAME).yaml)
+
 # --- Tests ---------------------------------------------------------------------
 
 test: ## Build and run unit/component tests + linters in the dev image (PKG=... for one package)

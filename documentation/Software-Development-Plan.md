@@ -935,6 +935,8 @@ The controller is read by `joy`'s `game_controller_node`, which uses SDL's stand
 | `make keyboard` | Drive with the keyboard instead |
 | `make se-reset`, `se-deactivate`, `se-activate`, `se-diagnostics` | `state_estimation` service, lifecycle and health |
 | `make se-watch` | Stream `state_estimation`'s health, one line per report. A slip WARN shows for only one report (about 1 s), so watch here rather than with `se-diagnostics`; a rise in `slip_events` is a slip even if its WARN scrolled past |
+| `make record NAME=<name> ID=VAL-xxx TITLE='...'` | Record your drive (pad or keyboard) as a validation scenario, `test/system/scenarios/<name>.yaml`, until you press Enter. Restart `make sim` first so the car starts at the spawn point. Fill in the file's checks, then run it with `make test-system FILTER=test_scenario_<name>` (§3.6) |
+| `make replay NAME=<name>` | Drive the running sim from a scenario file, to watch it in Gazebo and RViz (open-loop, nothing checked) |
 | `make shell` | Shell in the sim container with ROS sourced |
 
 `make` on its own lists every target.

@@ -15,13 +15,19 @@ if(BUILD_TESTING)
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
     TIMEOUT 60
   )
+
+  # Recording drives as scenarios and replaying them (SDP §3.6)
+  ament_add_pytest_test(test_scenario_record test/test_scenario_record.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
+    TIMEOUT 60
+  )
 endif()
 
 install(DIRECTORY launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 install(PROGRAMS scripts/joy_calibrate.py scripts/se_watch.py
-  scripts/steering_relay.py
+  scripts/steering_relay.py scripts/scenario_record.py scripts/scenario_replay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

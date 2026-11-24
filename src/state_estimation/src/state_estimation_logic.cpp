@@ -58,6 +58,8 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   }
   require_positive(config.slip_braking_accel, "slip.braking_accel");
   require_positive(config.slip_correction_time, "slip.correction_time");
+  require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
+  require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
   if (!(config.slip_correction_uncertainty >= 0.0) ||
     !std::isfinite(config.slip_correction_uncertainty))
   {
@@ -127,6 +129,13 @@ void StateEstimationLogic::predict(double dt)
   accel_sum_ = 0.0;
   accel_variance_sum_ = 0.0;
   accel_samples_ = 0;
+  if (status_.imu_stale) {
+    predict_lateral_ = 0.0;
+  } else if (lateral_samples_ > 0) {
+    predict_lateral_ = lateral_sum_ / lateral_samples_;
+  }
+  lateral_sum_ = 0.0;
+  lateral_samples_ = 0;
 
   fusion_->predict(state_, *frame_, inputs, dt);
   apply_pending_correction(dt);
@@ -134,8 +143,11 @@ void StateEstimationLogic::predict(double dt)
 
   elapsed_ += dt;
   accel_integral_ += inputs.forward_accel * dt;
+  lateral_integral_ += predict_lateral_ * dt;
+  centripetal_integral_ += last_wheel_speed_ * last_yaw_rate_ * dt;
   speed_history_.push_back(
-    {elapsed_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed), accel_integral_});
+    {elapsed_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed), accel_integral_,
+      lateral_integral_, centripetal_integral_, last_yaw_rate_});
   // Keep the newest sample that is at least slip_window old at the front.
   while (speed_history_.size() > 1 && speed_history_[1].time <= elapsed_ - config_.slip_window) {
     speed_history_.pop_front();
@@ -220,6 +232,8 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
     imu.pitch_variance >= 0.0);
   if (!valid_sample(imu.yaw_rate, imu.yaw_rate_variance) ||
     !valid_sample(imu.forward_specific_force, imu.forward_specific_force_variance) || !pitch_ok ||
+    !std::isfinite(imu.lateral_specific_force) || !(imu.lateral_specific_force_variance >= 0.0) ||
+    (imu.roll && !std::isfinite(*imu.roll)) ||
     !offset_ok)
   {
     ++status_.rejected_measurements;
@@ -241,6 +255,12 @@ void StateEstimationLogic::update_imu(const ImuMeasurement & imu)
   accel_sum_ += forward_accel_;
   accel_variance_sum_ += forward_accel_variance_;
   ++accel_samples_;
+  // Lateral: gravity removed using roll (and pitch) like forward.
+  const double roll = imu.roll.value_or(0.0);
+  lateral_sum_ += imu.lateral_specific_force - kGravity * std::sin(roll) * std::cos(pitch);
+  ++lateral_samples_;
+  imu_lever_ = lever;
+  lateral_available_ = imu.lateral_specific_force_variance > 0.0;
 
   last_yaw_rate_ = imu.yaw_rate;
   fusion_->update(state_, kYawRate, imu.yaw_rate, imu.yaw_rate_variance);
@@ -310,14 +330,39 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   const double feasible_yaw_rate = frame_->constrain(velocity).angular;
   const bool sliding =
     std::abs(velocity.angular - feasible_yaw_rate) > config_.slip_yaw_rate_margin;
-  bool slipping = wheel_slip || sliding;
+
+  // Understeer: the car slides wide with the yaw rate under what the
+  // steering allows, so the check above cannot fire (VAL-004: 10-17 deg
+  // slip angle at 3 m/s and mu 0.5). In a turn without slip the lateral
+  // acceleration at the IMU is yaw rate x speed, plus lever x yaw
+  // acceleration; sliding wide, the wheel claims more speed than the turn
+  // shows. Compared as means over the slip window, so noise averages out
+  // and the lever term is exact (lever x the yaw rate's change). One-sided:
+  // only a shortfall counts.
+  bool understeer = false;
+  if (reference && lateral_available_) {
+    const SpeedSample & then = speed_history_[reference->index];
+    const double span = elapsed_ - then.time;
+    const bool turning = std::abs(last_yaw_rate_) > config_.slip_lateral_min_yaw_rate &&
+      std::abs(then.yaw_rate) > config_.slip_lateral_min_yaw_rate;
+    if (turning && span > 0.0) {
+      const double measured = (lateral_integral_ - then.lateral_integral) / span;
+      const double expected = (centripetal_integral_ - then.centripetal_integral) / span +
+        imu_lever_ * (last_yaw_rate_ - then.yaw_rate) / span;
+      const double direction = expected >= 0.0 ? 1.0 : -1.0;
+      understeer = (expected - measured) * direction > config_.slip_lateral_threshold;
+    }
+  }
+  status_.understeer_detected = understeer;
+  bool slipping = wheel_slip || sliding || understeer;
   if (status_.slip_detected) {
     // Hysteresis: while slipping the wheel is not fused, so the speed is
     // IMU-only. The wheel is trusted again only after agreeing with it
     // (half the threshold plus 3 sigma) for half a slip window without a
     // break, so a wheel still spinning down cannot end the slip on its way.
     const bool agrees =
-      std::abs(residual) < 0.5 * config_.slip_threshold + 3.0 * speed_sigma && !sliding;
+      std::abs(residual) < 0.5 * config_.slip_threshold + 3.0 * speed_sigma && !sliding &&
+      !understeer;
     if (!agrees) {
       agreeing_since_.reset();
     } else if (!agreeing_since_) {
@@ -356,6 +401,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     status_.slip_detected ? wheel.variance * config_.slip_variance_scale : wheel.variance;
   fusion_->update(state_, kSpeed, wheel.speed, status_.wheel_variance_used);
   guard_numerics();
+  last_wheel_speed_ = wheel.speed;
   if (!speed_history_.empty()) {  // after the update
     speed_history_.back().speed = state_.mean(kSpeed);
     speed_history_.back().speed_variance = state_.covariance(kSpeed, kSpeed);

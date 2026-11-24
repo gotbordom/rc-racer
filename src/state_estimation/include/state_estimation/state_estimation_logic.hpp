@@ -32,6 +32,12 @@ struct ImuMeasurement
   /// Forward specific force, m/s^2, INCLUDING gravity (ICD-SNS-GNC).
   double forward_specific_force{0.0};
   double forward_specific_force_variance{0.0};  ///< (m/s^2)^2
+  /// Lateral (left) specific force, m/s^2, including gravity. In a turn
+  /// without slip it is yaw rate x speed (plus the lever arm term): the
+  /// understeer check compares it with what the wheel speed implies.
+  double lateral_specific_force{0.0};
+  /// (m/s^2)^2; 0 = not provided, and the understeer check is skipped.
+  double lateral_specific_force_variance{0.0};
   /// Pitch from the IMU's orientation (REP-103: positive = nose down), used
   /// to remove gravity. Unset when the IMU gives no orientation; the ground
   /// is then assumed level.
@@ -39,6 +45,9 @@ struct ImuMeasurement
   /// rad^2. Pitch noise becomes acceleration noise (g * cos(pitch))^2 *
   /// pitch_variance through gravity removal (0.02 rad is ~0.2 m/s^2).
   double pitch_variance{0.0};
+  /// Roll (REP-103: positive = right side down), to remove gravity from the
+  /// lateral specific force; unset like pitch.
+  std::optional<double> roll;
   /// m, IMU position ahead of base_footprint (from TF). In a turn an
   /// accelerometer ahead of the no-sideslip point (rear axle) feels
   /// -omega^2 * lever on its forward axis, which is not acceleration.
@@ -122,6 +131,12 @@ struct StateEstimationConfig
   /// s. The retroactive correction is applied over this long, so odom stays
   /// continuous. TBD.
   double slip_correction_time{0.5};
+  /// m/s^2. Understeer (a slide the yaw-rate check cannot see, VAL-004):
+  /// over slip_window, the measured lateral acceleration falls short of the
+  /// wheel speed x yaw rate by more than this. Checked only while turning
+  /// faster than slip_lateral_min_yaw_rate (rad/s). TBD.
+  double slip_lateral_threshold{0.5};
+  double slip_lateral_min_yaw_rate{0.3};
 
   /// Initial covariance diagonal after reset: the pose is exact by
   /// definition (odom starts at the car), the velocities are not.
@@ -151,6 +166,8 @@ struct StateEstimationStatus
   /// reference with no braking: left by a slip too small to catch) and
   /// rebuilt it, instead of calling slip.
   int stale_history_rebases{0};
+  /// The last wheel sample showed understeer (see slip_lateral_threshold).
+  bool understeer_detected{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -242,6 +259,15 @@ private:
   int accel_samples_{0};
   double predict_accel_{0.0};           ///< the average used by the last predict
   double predict_accel_variance_{0.0};
+  /// Lateral acceleration, gravity removed: averaged between predicts too.
+  double lateral_sum_{0.0};
+  int lateral_samples_{0};
+  double predict_lateral_{0.0};
+  double lateral_integral_{0.0};
+  double centripetal_integral_{0.0};
+  double last_wheel_speed_{0.0};
+  double imu_lever_{0.0};               ///< m, rear axle to IMU, from the last sample
+  bool lateral_available_{false};       ///< the last IMU sample gave lateral force
 
   /// For the windowed slip check: per predict step, the time, the speed
   /// estimate and the running integral of the acceleration input.
@@ -251,6 +277,9 @@ private:
     double speed;
     double speed_variance;
     double accel_integral;
+    double lateral_integral;      ///< of the measured lateral acceleration
+    double centripetal_integral;  ///< of wheel speed x yaw rate
+    double yaw_rate;              ///< IMU, at this sample
   };
   std::deque<SpeedSample> speed_history_;
   /// While slipping: since when the wheel has agreed again (hysteresis).

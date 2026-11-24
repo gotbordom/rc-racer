@@ -40,6 +40,8 @@ state_estimation:
       correction_uncertainty: 0.3     # share of a retroactive slip correction kept as 1-sigma (TBD)
       braking_accel: 0.5              # m/s^2: wheel behind the IMU counts as slip only when braking (TBD)
       correction_time: 0.5            # s: a retroactive slip correction is spread over this (TBD)
+      lateral_threshold: 0.5          # m/s^2: lateral accel short of wheel speed x yaw rate = understeer (TBD)
+      lateral_min_yaw_rate: 0.3       # rad/s: understeer is checked only when turning faster (TBD)
     initial_covariance:
       pose: 1.0e-6
       speed: 1.0

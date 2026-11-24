@@ -39,6 +39,15 @@ ImuMeasurement imu_sample(double yaw_rate, double forward_specific_force = 0.0)
 
 WheelSpeedMeasurement wheel_sample(double speed) {return {speed, kWheelStd * kWheelStd};}
 
+// An IMU sample in a turn: lateral (left) specific force too.
+ImuMeasurement turn_sample(double yaw_rate, double lateral, double forward = 0.0)
+{
+  ImuMeasurement imu = imu_sample(yaw_rate, forward);
+  imu.lateral_specific_force = lateral;
+  imu.lateral_specific_force_variance = kAccelStd * kAccelStd;
+  return imu;
+}
+
 // One 50 Hz cycle as the node runs it: predict, two IMU samples (100 Hz),
 // one wheel sample.
 void cycle(StateEstimationLogic & logic, const ImuMeasurement & imu, double wheel_speed)
@@ -633,6 +642,64 @@ TEST(StateEstimationLogicTest, RetroactiveCorrectionKeepsOdomContinuous)
   }
   ASSERT_GE(logic.status().slip_events, 1);
   EXPECT_LT(max_jump, 0.01);
+}
+
+// Drive a turn as the bicycle model has it, without slip: the IMU (at the
+// default mount, 0.192 m ahead of the rear axle) reads yaw rate x speed plus
+// lever x yaw acceleration sideways, and the wheel reads `wheel_factor` x the
+// body speed. The yaw rate ramps from 0 to `omega` over `turn_in` s, then
+// holds. Returns whether understeer was ever flagged.
+bool turn(
+  StateEstimationLogic & logic, double speed, double omega, double turn_in,
+  double seconds, double wheel_factor = 1.0)
+{
+  const double lever = 0.192;
+  bool flagged = false;
+  double w = 0.0;
+  for (int i = 0; i < static_cast<int>(seconds / kDt); ++i) {
+    const double alpha = (i * kDt < turn_in) ? omega / turn_in : 0.0;
+    for (int k = 0; k < 2; ++k) {
+      w += alpha * 0.5 * kDt;
+      logic.update_imu(turn_sample(w, w * speed + lever * alpha));
+    }
+    logic.predict(kDt);
+    logic.update_wheel_speed(wheel_sample(wheel_factor * speed));
+    flagged = flagged || logic.status().understeer_detected;
+  }
+  return flagged;
+}
+
+TEST(StateEstimationLogicTest, NoUndersteerInCleanTurns)
+{
+  // Turns the kinematics allow, both ways, forward and in reverse, with a
+  // sharp turn-in (large lever x yaw acceleration): never understeer.
+  for (double speed : {1.0, 2.0, 3.0, -1.0}) {
+    // 90 % of the steering limit at this speed (0.52 rad, 0.384 m wheelbase)
+    const double limit = 0.9 * std::abs(speed) * std::tan(0.52) / 0.384;
+    for (double omega : {limit, -limit}) {
+      StateEstimationLogic logic;
+      for (int i = 0; i < 50; ++i) {
+        cycle(logic, imu_sample(0.0), speed);
+      }
+      EXPECT_FALSE(turn(logic, speed, omega, 0.2, 3.0))
+        << "speed " << speed << " omega " << omega;
+      EXPECT_EQ(logic.status().slip_events, 0) << "speed " << speed << " omega " << omega;
+    }
+  }
+}
+
+TEST(StateEstimationLogicTest, UndersteerIsDetected)
+{
+  // VAL-004: sliding wide at 2 rad/s, the body moves forward at 2.6 m/s while
+  // the driven wheel reads 3.0. The lateral acceleration (5.2 m/s^2) falls
+  // short of what the wheel implies (6.0).
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 2.6);
+  }
+  ASSERT_FALSE(turn(logic, 2.6, 2.0, 0.3, 1.0));  // grip: no understeer
+  EXPECT_TRUE(turn(logic, 2.6, 2.0, 0.02, 1.0, 3.0 / 2.6));
+  EXPECT_GE(logic.status().slip_events, 1);
 }
 
 TEST(StateEstimationLogicTest, LaunchSlipIsCaughtOnceAndRecovers)

@@ -66,6 +66,8 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("slip.correction_uncertainty", d.slip_correction_uncertainty);
   declare_parameter("slip.braking_accel", d.slip_braking_accel);
   declare_parameter("slip.correction_time", d.slip_correction_time);
+  declare_parameter("slip.lateral_threshold", d.slip_lateral_threshold);
+  declare_parameter("slip.lateral_min_yaw_rate", d.slip_lateral_min_yaw_rate);
   declare_parameter("initial_covariance.pose", d.initial_pose_variance);
   declare_parameter("initial_covariance.speed", d.initial_speed_variance);
   declare_parameter("initial_covariance.yaw_rate", d.initial_yaw_rate_variance);
@@ -97,6 +99,8 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.slip_correction_uncertainty = get_parameter("slip.correction_uncertainty").as_double();
   c.slip_braking_accel = get_parameter("slip.braking_accel").as_double();
   c.slip_correction_time = get_parameter("slip.correction_time").as_double();
+  c.slip_lateral_threshold = get_parameter("slip.lateral_threshold").as_double();
+  c.slip_lateral_min_yaw_rate = get_parameter("slip.lateral_min_yaw_rate").as_double();
   c.initial_pose_variance = get_parameter("initial_covariance.pose").as_double();
   c.initial_speed_variance = get_parameter("initial_covariance.speed").as_double();
   c.initial_yaw_rate_variance = get_parameter("initial_covariance.yaw_rate").as_double();
@@ -312,6 +316,7 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   stat.add("slip_detected", s.slip_detected);
   stat.add("slip_events", s.slip_events);
   stat.add("stale_history_rebases", s.stale_history_rebases);
+  stat.add("understeer_detected", s.understeer_detected);
   stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);

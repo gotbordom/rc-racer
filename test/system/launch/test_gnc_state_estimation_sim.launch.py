@@ -16,6 +16,12 @@ Validates (VEH.GNC.SE spec §7):
   - REQ-GNC-006: the reported position covariance is honest: the true
     error is inside its 3-sigma ellipse for nearly all samples
   - Health stays out of ERROR, and the run ends in OK
+  - REQ-GNC-006 (SDP §3.6 VAL-008): the position variance grows with
+    distance driven, by at least most of the distance process noise
+    (not monotonically: the scale term shrinks as the loop returns
+    toward the start, VAL-016)
+  - REQ-GNC-002 (VAL-009): /odom speed follows the true wheel speed
+    (/sim/truth/wheel_odom) with no bias while cruising and no lag
 
 The measured numbers are printed as a table, so a run also documents the
 estimator's performance.
@@ -26,6 +32,7 @@ Characteristics:
 CI/CD: Nightly
 """
 
+import bisect
 import math
 import os
 import time
@@ -37,6 +44,7 @@ import launch_testing.actions
 import launch_testing.asserts
 import launch_testing.markers
 import rclpy
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -66,6 +74,18 @@ MAX_STEP = 0.1              # m between consecutive /odom samples (no jumps)
 DRIFT_LIMIT = 0.02
 MAX_FINAL_YAW_ERROR = 0.1   # rad
 MIN_CONSISTENT_FRACTION = 0.95
+# VAL-008: at each checkpoint the position variance (x + y) must be at least
+# this share of process_noise.distance x distance driven. Speed updates take
+# a little off through the speed-position correlation.
+VARIANCE_CHECKPOINT_M = 10.0
+MIN_DISTANCE_NOISE_SHARE = 0.8
+# VAL-009: speed against the true wheel speed. Bias over cruise samples (true
+# wheel speed within CRUISE_BAND of SPEED, no slip); lag as the time shift
+# (searched within MAX_SHIFT_S) that best lines the two up.
+CRUISE_BAND = 0.05          # m/s
+MAX_SPEED_BIAS = 0.02       # m/s
+MAX_SPEED_LAG_S = 0.05
+MAX_SHIFT_S = 0.3
 
 # Per-sample trace (truth vs estimate), saved with the test results so a
 # failure can be analysed. ctest runs in the package's build directory.
@@ -146,6 +166,48 @@ class PurePursuit:
         return SPEED, SPEED * curvature, cross_track, False
 
 
+def distance_noise_density():
+    """Return process_noise.distance (m^2/m) from state_estimation's config."""
+    path = os.path.join(get_package_share_directory('state_estimation'), 'config',
+                        'state_estimation.yaml')
+    with open(path) as f:
+        params = yaml.safe_load(f)['state_estimation']['ros__parameters']
+    return params['process_noise']['distance']
+
+
+def variance_checkpoints(samples, every):
+    """Return [(distance driven, x + y variance)] each `every` metres."""
+    out, distance, next_mark = [], 0.0, every
+    for a, b in zip(samples, samples[1:]):
+        distance += math.hypot(b.truth[0] - a.truth[0], b.truth[1] - a.truth[1])
+        if distance >= next_mark:
+            out.append((distance, b.var_x + b.var_y))
+            next_mark += every
+    return out
+
+
+def speed_tracking(samples, wheel, slip_times):
+    """Return (bias, lag) of the /odom speed against the true wheel speed."""
+    times = [t for t, _ in wheel]
+
+    def wheel_at(t):
+        i = min(max(bisect.bisect_left(times, t), 1), len(wheel) - 1)
+        (t0, v0), (t1, v1) = wheel[i - 1], wheel[i]
+        return v0 if t1 == t0 else v0 + (t - t0) / (t1 - t0) * (v1 - v0)
+
+    inside = [s for s in samples
+              if times[0] + MAX_SHIFT_S <= s.t <= times[-1] - MAX_SHIFT_S
+              and not any(abs(s.t - t) < 1.0 for t in slip_times)]
+    cruise = [s.v - wheel_at(s.t) for s in inside if abs(wheel_at(s.t) - SPEED) < CRUISE_BAND]
+    bias = sum(cruise) / len(cruise) if cruise else float('nan')
+
+    def rms(shift):
+        return math.sqrt(sum((s.v - wheel_at(s.t - shift)) ** 2 for s in inside) / len(inside))
+    shifts = [i * 0.01 for i in range(-int(MAX_SHIFT_S * 100), int(MAX_SHIFT_S * 100) + 1)]
+    lag = min(shifts, key=rms)
+    return bias, lag, len(cruise)
+
+
 class TestStateEstimationInSim(unittest.TestCase):
     """Drive the loop once and check the estimate against ground truth."""
 
@@ -187,7 +249,8 @@ class TestStateEstimationInSim(unittest.TestCase):
             sim.sleep_sim(0.05)
         sim.command(0.0, 0.0)
         sim.sleep_sim(1.0)  # roll to a stop; keep comparing
-        history, odom, health = sim.stop_recording()
+        recording = sim.stop_recording()
+        history, odom, health = recording.history, recording.odom, recording.health
         t_end = sim.now()
 
         # --- Metrics --------------------------------------------------------------
@@ -230,6 +293,11 @@ class TestStateEstimationInSim(unittest.TestCase):
         final_sigma = math.sqrt(last.var_x + last.var_y)
         errors_seen = [h.message for h in health if h.is_error]
         last_health = health[-1] if health else None
+        q = distance_noise_density()
+        checkpoints = variance_checkpoints(samples, VARIANCE_CHECKPOINT_M)
+        noise_share = min(var / (q * d) for d, var in checkpoints)
+        slip_times = [h.t for h in health if h.values.get('slip_detected') == 'True']
+        bias, lag, n_cruise = speed_tracking(samples, recording.wheel, slip_times)
 
         print('\n'
               '  state_estimation vs ground truth (practice course loop)\n'
@@ -249,7 +317,12 @@ class TestStateEstimationInSim(unittest.TestCase):
               f'  final 1-sigma (x+y)     {final_sigma:8.3f} m\n'
               f'  inside 3-sigma ellipse  {100.0 * consistent_fraction:8.1f} %\n'
               f'  diagnostics ERRORs      {len(errors_seen):8d}\n'
-              f'  non-OK diagnostics      {len(warn_times):8d} of {len(health)}\n',
+              f'  non-OK diagnostics      {len(warn_times):8d} of {len(health)}\n'
+              f'  position variance at    '
+              + ', '.join(f'{d:.0f} m: {v:.4f}' for d, v in checkpoints) + ' m^2\n'
+              f'  lowest share of q x d   {noise_share:8.2f} (q = {q:g} m^2/m)\n'
+              f'  speed bias, cruising    {bias:+8.4f} m/s ({n_cruise} samples)\n'
+              f'  speed lag vs wheel      {lag:+8.2f} s\n',
               flush=True)
 
         # --- Pass criteria -------------------------------------------------------
@@ -263,6 +336,13 @@ class TestStateEstimationInSim(unittest.TestCase):
         self.assertEqual(errors_seen, [], 'state_estimation reported ERROR while driving')
         self.assertIsNotNone(last_health, 'no diagnostics from state_estimation')
         self.assertTrue(last_health.is_ok, last_health.message)
+        self.assertGreater(checkpoints[-1][1], checkpoints[0][1],
+                           'VAL-008: position variance did not grow over the loop')
+        self.assertGreaterEqual(noise_share, MIN_DISTANCE_NOISE_SHARE,
+                                'VAL-008: position variance below the distance process noise')
+        self.assertGreater(n_cruise, 100, 'VAL-009: too few cruise samples')
+        self.assertLessEqual(abs(bias), MAX_SPEED_BIAS, 'VAL-009: speed biased against the wheel')
+        self.assertLessEqual(abs(lag), MAX_SPEED_LAG_S, 'VAL-009: speed lags the wheel')
 
 
 @launch_testing.post_shutdown_test()

@@ -312,9 +312,10 @@ class TestScenario(unittest.TestCase):
         origin = sim.reset_odom()
         sim.start_recording()
         windows = drive(sim, SCENARIO['steps'])
-        history, odom, health = sim.stop_recording()
+        recording = sim.stop_recording()
+        health = recording.health
 
-        samples = compare(odom, history, origin)
+        samples = compare(recording.odom, recording.history, origin)
         self.assertGreater(len(samples), 100, 'too few /odom samples')
         metrics, failures = run_checks(
             SCENARIO['checks'], SCENARIO['steps'], windows, samples, health)

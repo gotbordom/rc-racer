@@ -7,8 +7,9 @@ Shared support for the state_estimation system tests in simulation.
 Used by the L2 loop (test_gnc_state_estimation_sim) and the validation
 scenarios (test_gnc_state_estimation_scenario):
   - SimRecorder: a sim-time node that records Gazebo ground truth
-    (/sim/truth/poses, ICD-VEH-TST VEH-TST-07), /odom and the
-    state_estimation diagnostics, and resets odom at the car's true pose
+    (/sim/truth/poses and /sim/truth/wheel_odom, ICD-VEH-TST VEH-TST-07),
+    /odom and the state_estimation diagnostics, and resets odom at the
+    car's true pose
   - compare(): matches each /odom sample with truth and measures the error
     and whether it is inside the reported 3-sigma ellipse
 
@@ -151,6 +152,19 @@ class Health:
         return self.level == DiagnosticStatus.ERROR
 
 
+class Recording:
+    """What SimRecorder recorded between start_recording() and stop_recording()."""
+
+    __slots__ = ('history', 'odom', 'health', 'wheel')
+
+    def __init__(self, history, odom, health, wheel):
+        """Truth [(t, pose)], odom [(stamp, Odometry)], [Health], wheel [(t, v)]."""
+        self.history = history
+        self.odom = odom
+        self.health = health
+        self.wheel = wheel
+
+
 class SimRecorder:
     """
     Sim-time node that drives the car and records truth, /odom and health.
@@ -168,10 +182,13 @@ class SimRecorder:
         self._history = []          # every (t, (x, y, yaw)) while recording
         self._odom = []             # (stamp, Odometry) while recording
         self._health = []           # Health while recording
+        self._wheel = []            # (t, true wheel speed) while recording
         self._recording = False
         self.cmd_pub = self.node.create_publisher(Twist, cmd_topic, 10)
         self.node.create_subscription(TFMessage, '/sim/truth/poses', self._on_truth, 10)
         self.node.create_subscription(Odometry, '/odom', self._on_odom, 50)
+        self.node.create_subscription(
+            Odometry, '/sim/truth/wheel_odom', self._on_wheel_truth, 50)
         self.node.create_subscription(DiagnosticArray, '/diagnostics', self._on_diagnostics, 10)
         self._reset = self.node.create_client(Trigger, '/state_estimation/reset')
         self._executor = SingleThreadedExecutor()
@@ -206,6 +223,11 @@ class SimRecorder:
         with self.lock:
             if self._recording:
                 self._odom.append((stamp, msg))
+
+    def _on_wheel_truth(self, msg):
+        with self.lock:
+            if self._recording:
+                self._wheel.append((self.now(), msg.twist.twist.linear.x))
 
     def _on_diagnostics(self, msg):
         for status in msg.status:
@@ -261,11 +283,12 @@ class SimRecorder:
     def start_recording(self):
         """Clear and start recording truth, /odom and health."""
         with self.lock:
-            self._history, self._odom, self._health = [], [], []
+            self._history, self._odom, self._health, self._wheel = [], [], [], []
             self._recording = True
 
     def stop_recording(self):
-        """Stop recording; return (truth history, odom, health)."""
+        """Stop recording; return the Recording."""
         with self.lock:
             self._recording = False
-            return list(self._history), list(self._odom), list(self._health)
+            return Recording(list(self._history), list(self._odom), list(self._health),
+                             list(self._wheel))

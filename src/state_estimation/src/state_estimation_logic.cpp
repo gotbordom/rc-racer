@@ -214,6 +214,24 @@ void StateEstimationLogic::restart_from_impact()
   }
 }
 
+void StateEstimationLogic::take_back_distance_since_impact()
+{
+  // Pinned means the car stopped at the impact; whatever the estimate drove
+  // since, on the IMU-only speed the impact left (0.3-0.5 m/s until the IMU
+  // goes quiet, VAL-019), is error. Take it back like a slip correction:
+  // spread out, so odom stays continuous.
+  double distance = 0.0;
+  for (std::size_t i = 1; i < speed_history_.size(); ++i) {
+    const SpeedSample & s = speed_history_[i];
+    if (s.time > impact_time_) {
+      distance += s.speed * (s.time - speed_history_[i - 1].time);
+    }
+  }
+  const double yaw = state_.mean(kYaw);
+  pending_correction_ += distance * Eigen::Vector2d(std::cos(yaw), std::sin(yaw));
+  correction_time_left_ = config_.slip_correction_time;
+}
+
 void StateEstimationLogic::rebase_history_before(std::size_t from)
 {
   const SpeedSample anchor = speed_history_[from];
@@ -405,6 +423,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
         (b.accel_integral - a.accel_integral) / dt * direction < -config_.slip_impact_accel)
       {
         impact = true;
+        impact_time_ = b.time;
         break;
       }
     }
@@ -468,6 +487,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
       pinned_since_ = elapsed_;
       pinned_accel_integral_ = accel_integral_;
       pinned = true;
+      take_back_distance_since_impact();
     }
     if (pinned) {
       state_.mean(kSpeed) = 0.0;

@@ -860,13 +860,18 @@ TEST(StateEstimationLogicTest, ImpactTheImuOnlyPartlySawStillPins)
   }
   const double stop_x = logic.state().mean(kX);
   cycle(logic, imu_sample(0.0, -23.0), 1.0);  // -0.46 m/s
+  for (int i = 0; i < 25; ++i) {  // 0.5 s settling: the IMU not yet quiet
+    cycle(logic, imu_sample(0.0, i % 2 ? 0.5 : -0.5), 1.0);
+  }
   bool pinned = false;
   for (int i = 0; i < 200; ++i) {
     cycle(logic, imu_sample(0.0), 1.0);
     pinned = pinned || logic.status().pinned;
   }
   EXPECT_TRUE(pinned);
-  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.2);
+  // The ~0.27 m driven on the leftover speed until the IMU went quiet is
+  // taken back.
+  EXPECT_NEAR(logic.state().mean(kX), stop_x, 0.05);
 }
 
 TEST(StateEstimationLogicTest, PinnedCarThatDrivesAwayIsFollowed)

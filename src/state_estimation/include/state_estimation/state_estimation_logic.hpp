@@ -253,6 +253,8 @@ private:
 
   /// Restart the IMU-only speed from before an impact plus the IMU since.
   void restart_from_impact();
+  /// On pinning: take back the distance driven since the impact.
+  void take_back_distance_since_impact();
 
   /// Move the position by this step's share of a pending correction.
   void apply_pending_correction(double dt);
@@ -260,6 +262,7 @@ private:
   double correction_time_left_{0.0};
   bool after_impact_{false};             ///< this slip started with or saw an impact
   double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
+  double impact_time_{0.0};              ///< s (elapsed_), of the impact step
   std::optional<double> pinned_since_;   ///< when it last became pinned
   double pinned_accel_integral_{0.0};    ///< accel_integral_ when pinned
 

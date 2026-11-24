@@ -515,7 +515,7 @@ The system tests run in an isolated Docker environment to ensure reproducibility
 
 ### 3.6 Validation Cases
 
-Hands-on checks in the sim (driving by hand, §5.6) find problems that the planned tests miss. Each check, and each problem it finds, becomes a **validation case** in the register below, so every one ends up as an automated test at some level. Feature **2.3 `validation-scenarios`** builds the tooling and automates the cases found so far. After that, the register is a living list: add a row for every new manual check or finding, in any feature, and automate it in that feature or note where it will be.
+Hands-on checks in the sim (driving by hand, §5.6) find problems that the planned tests miss. Each check, and each problem it finds, becomes a **validation case** in the register below, so every one ends up as an automated test at some level. Feature **2.3 `validation-scenarios`** built the tooling and automated the cases found so far. After that, the register is a living list: add a row for every new manual check or finding, in any feature, and automate it in that feature or note where it will be.
 
 **Test levels**, cheapest first. Use the cheapest level that can show the problem.
 
@@ -523,14 +523,26 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 | --- | --- | --- |
 | Unit | The component's logic tests (no ROS, §2) | Behaviour of the algorithm: slip logic, model geometry. A fix found in a scenario gets a unit test here too |
 | Launch | The component's launch test (no Gazebo) | Node behaviour: lifecycle, parameters, services, diagnostics, TF publishers |
-| Scenario | `test_gnc_state_estimation_maneuvers` (planned, 2.3): one scenario file per case in `test/system/scenarios/`, with `tire_mu`, a scripted command sequence (time, speed, steering fraction) and pass criteria | Driving cases with simple, well-defined inputs |
-| Recording | The same test, driven by a recorded manual run (`make record`, planned in 2.3: `/cmd_vel` after the steering relay, stamped with sim time, converted to a scenario file) | Messy, human-shaped driving that is hard to script |
+| Scenario | `test_gnc_state_estimation_scenario` (`rc_racer_system_tests`): one file per case in `test/system/scenarios/`, each its own test `test_scenario_<name>` in a fresh headless Gazebo, with the world, `tire_mu`, scripted steps (time, speed, steering fraction) and checks. Format and how to watch them: `test/system/scenarios/README.md` | Driving cases with simple, well-defined inputs |
+| Recording | The same test, driven by a recorded manual run: `make record NAME=...` turns your `/cmd_vel` in the running `make sim` into a scenario file, then you set its checks (§5.6) | Messy, human-shaped driving that is hard to script |
 | L2 | The component's L2 sim test | Properties over a whole drive (drift, covariance) |
 | Manual | This register only | Visual checks that need a person (RViz) |
 
 **Scenario and recording tests check properties, not a trajectory** ("estimate within X of truth", "≥ 95 % inside 3σ", "WARN within 0.5 s"), because replays never reproduce a run exactly: Gazebo's real-time factor varies, and slides and spins diverge.
 
 **Deferring a manual check.** A PR can merge before its manual checks are done: each deferred check gets a GitHub issue labelled [`manual-validation`](https://github.com/gotbordom/rc-racer/issues?q=label%3Amanual-validation) that references the PR, so it shows on the PR's timeline and stays open after the merge. Close the issue when the check is done, and update its row here. [Open manual checks](https://github.com/gotbordom/rc-racer/issues?q=is%3Aopen+label%3Amanual-validation) is the to-do list.
+
+**Manual validation runbook.** For a hands-on session: working through open manual checks, or checking driving behaviour after a change.
+
+1. **Pick the checks.** [Open manual checks](https://github.com/gotbordom/rc-racer/issues?q=is%3Aopen+label%3Amanual-validation) lists them. Each issue has its steps, pass criteria and setup.
+2. **Start the sim fresh,** in the world and at the μ the check names: `make sim [WORLD=...] [MU=...]` (§5.6). Restart it between checks that need the car at the spawn point.
+3. **Watch health** in a second terminal: `make se-watch`. Use the pad (hold LB) or `make keyboard`.
+4. **Record anything worth keeping,** before driving it: `make record NAME=<name> ID=VAL-xxx TITLE='...'`, then Enter when done. A recording makes a finding reproducible and becomes its scenario.
+5. **To see an automated case,** watch its scenario: `make replay NAME=<name>`. `test/system/scenarios/README.md` lists, for every scenario, the `make sim` world and μ, what a good run looks like, and what its known failure looks like.
+6. **Record the result:**
+   - **Pass:** comment on the issue (what you drove, what you saw), set the case's *Manual* column to ✅ with the date, and close the issue.
+   - **Fail or new behaviour:** don't fix it in the session. Add a VAL row and a scenario that shows it (from the recording, or scripted), and decide with the owner how to record it. A known bug becomes an expected-fail case with a `bug` issue and a spec open item, and the commit message says what was decided and which options were rejected (see VAL-005/017, VAL-004/018, VAL-007/019).
+7. **When a feature's manual issues are all closed,** its §1.1 status goes from 🔍 In validation to ✅ Done.
 
 **Register.** *Automated:* ⏳ not yet · ✅ yes · ❌ known failure (the test is marked expected-fail until fixed). *Manual:* ✅ passed · 🕓 pending, with its issue · - not needed. *PR:* where the case was added or last changed.
 

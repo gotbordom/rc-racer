@@ -60,8 +60,9 @@ A replay is open-loop: small differences in the physics add up, so the
 car may not follow the recorded path exactly. Check properties, not the
 path.
 
-At shutdown every process must exit 0, except that Gazebo may be killed
-(it sometimes hangs, #12); a warning is printed when it is.
+At shutdown every process must exit 0, except the sim plumbing, which
+sometimes dies (#12): Gazebo may be killed (it hangs) and the ROS-Gazebo
+bridge may segfault. A warning is printed when either happens.
 
 Run one: `make test-system FILTER=test_scenario_<name>`. Each writes
 `scenario_<name>_trace.csv` (truth against estimate) to

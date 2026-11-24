@@ -34,6 +34,7 @@ This document outlines the software development plan for the RC Racer autonomous
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
 | 2.3 | `validation-scenarios` | TST | ✅ Done: merged 2026-11-24 (PR #10). Validation cases automated (§3.6); known bugs open: #9, #11, #14 (spec Open Items 5–8) |
 | 2.4 | `slip-handling` | VEH.GNC.SE, TST (DEV-07) | 🚧 In progress: fix the slip bugs 2.3 found. Sim IMU sees impacts (DEV-07), then VAL-017 (#9), VAL-006, VAL-019 (#14) and the first part of VAL-018 (#11) |
+| 2.5 | `lateral-velocity` | VEH.GNC.SE | ⏳ Planned: sideways velocity in the state with a no-slip pseudo-measurement relaxed in slides, to fix VAL-018 (#11; spec §6.1) |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |

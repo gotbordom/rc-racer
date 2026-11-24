@@ -28,6 +28,7 @@ checks:                     # every check is optional
   settles: true             # speed estimate within 0.05 m/s of 0 at the end
   covariance_dip: {min_drop: 0.03}  # out and back: variance falls, then grows
   max_jump: 0.05            # m an /odom sample may move beyond speed x dt (default 0.05)
+  true_end_near: {x: 39.5, y: 7.7, within: 1.0}  # m, true end position (start frame)
 expected_fail:              # known failure: passes while this check, and only it, fails
   reason: "why, and the open item"
   failing: "slip in step 2"   # text of the failure it expects (or a list of them)

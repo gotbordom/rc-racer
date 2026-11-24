@@ -68,7 +68,7 @@ STEP_KEYS = {
 CHECK_KEYS = {
     'max_position_error', 'final_position_error', 'max_yaw_error_deg',
     'min_consistent_fraction', 'slip_events', 'never_error', 'ends_ok', 'settles',
-    'covariance_dip', 'max_jump',
+    'covariance_dip', 'max_jump', 'true_end_near',
 }
 
 
@@ -271,6 +271,16 @@ def run_checks(checks, steps, windows, samples, health):
               f'health did not end OK: {health[-1].message if health else "none"}')
     if checks.get('settles'):
         check(abs(last.v) < 0.05, f'speed estimate did not settle to 0: {last.v:+.3f} m/s')
+    if 'true_end_near' in checks:
+        # The drive did what the scenario is about (e.g. reached the obstacle):
+        # an open-loop drive that misses it would otherwise pass untested.
+        target = checks['true_end_near']
+        off = math.hypot(last.truth[0] - target['x'], last.truth[1] - target['y'])
+        metrics.append(f'true end position       ({last.truth[0]:.2f}, {last.truth[1]:.2f}) m, '
+                       f'{off:.2f} m from the target')
+        check(off <= target['within'],
+              f'car ended {off:.2f} m from ({target["x"]}, {target["y"]}) '
+              f'(within {target["within"]} m): the drive missed its target')
     if 'covariance_dip' in checks:
         # Out and back (VAL-016): the position variance falls for a while on
         # the way back, then grows again.

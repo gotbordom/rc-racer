@@ -10,22 +10,34 @@ adds realistic noise, sets covariances from the same noise config, and
 publishes the ICD-SNS-GNC topics (/imu, /navsat, /wheel/odom) - the way real
 drivers set covariances from the sensor datasheet.
 
+The IMU is the exception: Gazebo's samples acceleration at single instants
+and misses contact impulses (ICD-VEH-TST DEV-07). Its raw output comes in on
+/sim/gazebo/imu, and this node publishes the IMU truth on /sim/truth/imu:
+Gazebo's gyro and orientation, with the acceleration an ideal (continuously
+sensing) accelerometer would read, derived from the body's true motion
+(/sim/truth/body_odom). Until that is available, Gazebo's own is used.
+
 Noise is added here rather than in Gazebo because Fortress' NavSat sensor
 applies its horizontal noise in degrees, and the Ackermann odometry has no
 noise model at all. Logic lives in rc_racer_simulation.sensor_noise.
 """
+
+import copy
 
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.time import Time
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from rc_racer_simulation.sensor_noise import (
     GaussMarkov,
     ImuNoise,
     NavSatNoise,
+    TruthAccelerometer,
     WheelOdomNoise,
     imu_covariances,
     make_rng,
@@ -75,11 +87,22 @@ class SensorAdapterNode(Node):
                            GaussMarkov(gm.vertical_stddev, gm.correlation_time, self._rng)]
         self._last_gps_stamp = None
 
+        # Ideal accelerometer from the body's true motion (DEV-07). Built once
+        # the IMU mount is known from TF.
+        self._accel_from_truth = self.declare_parameter('imu.acceleration_from_truth', True).value
+        self._gravity = self._param('imu.gravity', 9.8)  # Gazebo's default world gravity
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+        self._truth_accel = None
+        self._warned_no_truth_accel = False
+
         qos = qos_profile_sensor_data
         self._imu_pub = self.create_publisher(Imu, '/imu', qos)
+        self._imu_truth_pub = self.create_publisher(Imu, '/sim/truth/imu', qos)
         self._navsat_pub = self.create_publisher(NavSatFix, '/navsat', qos)
         self._wheel_pub = self.create_publisher(Odometry, '/wheel/odom', qos)
-        self.create_subscription(Imu, '/sim/truth/imu', self._on_imu, qos)
+        self.create_subscription(Imu, '/sim/gazebo/imu', self._on_imu, qos)
+        self.create_subscription(Odometry, '/sim/truth/body_odom', self._on_body_odom, qos)
         self.create_subscription(NavSatFix, '/sim/truth/navsat', self._on_navsat, qos)
         self.create_subscription(Odometry, '/sim/truth/wheel_odom', self._on_wheel_odom, qos)
         self.get_logger().info(
@@ -91,7 +114,36 @@ class SensorAdapterNode(Node):
     def _gauss(self, stddev):
         return self._rng.gauss(0.0, stddev) if stddev > 0 else 0.0
 
+    def _on_body_odom(self, msg):
+        if not self._accel_from_truth:
+            return
+        if self._truth_accel is None:
+            try:
+                mount = self._tf_buffer.lookup_transform(
+                    msg.child_frame_id, 'imu_link', Time()).transform.translation
+            except TransformException:
+                return  # robot_state_publisher not up yet
+            self._truth_accel = TruthAccelerometer((mount.x, mount.y, mount.z), self._gravity)
+            self.get_logger().info(
+                f'IMU acceleration from true motion; mount ({mount.x:.3f}, {mount.y:.3f}, '
+                f'{mount.z:.3f}) m from {msg.child_frame_id}')
+        q = msg.pose.pose.orientation
+        lin, ang = msg.twist.twist.linear, msg.twist.twist.angular
+        self._truth_accel.add_motion(
+            _stamp_seconds(msg), (q.x, q.y, q.z, q.w), (lin.x, lin.y, lin.z), (ang.x, ang.y, ang.z))
+
     def _on_imu(self, msg):
+        if self._accel_from_truth:
+            # The average over the time since the last IMU sample, so every
+            # change in the true velocity is counted exactly once.
+            force = self._truth_accel.read() if self._truth_accel else None
+            if force is not None:
+                a = msg.linear_acceleration
+                a.x, a.y, a.z = force
+            elif not self._warned_no_truth_accel:
+                self._warned_no_truth_accel = True
+                self.get_logger().info('No true body motion yet: using Gazebo\'s IMU acceleration')
+        self._imu_truth_pub.publish(copy.deepcopy(msg))
         n = self._imu
         g, a = n.angular_velocity_stddev, n.linear_acceleration_stddev
         msg.angular_velocity.x += self._gauss(g)

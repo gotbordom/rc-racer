@@ -46,4 +46,18 @@
   <xacro:rc_racer_wheels/>
   <xacro:rc_racer_sensors/>
 
+  <!-- Ground truth of the body's own motion (ICD-VEH-TST VEH-TST-08), stamped:
+       pose and velocity of base_footprint, whatever the wheels do. The
+       sensor adapter derives the IMU's acceleration from it (DEV-07). -->
+  <gazebo>
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_publish_frequency>100</odom_publish_frequency>
+      <odom_topic>body_odom</odom_topic>
+      <dimensions>3</dimensions>
+    </plugin>
+  </gazebo>
+
 </robot>

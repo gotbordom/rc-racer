@@ -21,6 +21,11 @@ sensor_adapter:
       linear_acceleration_stddev: 0.05    # m/s^2, white noise per sample
       orientation_roll_pitch_stddev: 0.02 # rad (~1.1 deg), fused orientation
       orientation_yaw_stddev: 0.05        # rad (~2.9 deg), fused orientation
+      # Acceleration as an ideal accelerometer reads it, from the body's true
+      # motion: Gazebo's IMU samples an instant and misses impacts (DEV-07).
+      # false = Gazebo's own (the old behaviour).
+      acceleration_from_truth: true
+      gravity: 9.8                        # m/s^2, the world's (Gazebo's default)
 
     navsat:                               # consumer GNSS receiver, standalone (no RTK)
       horizontal_stddev: 2.0              # m, north and east

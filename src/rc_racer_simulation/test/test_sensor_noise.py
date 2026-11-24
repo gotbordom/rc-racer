@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Anthony Tracy
 # SPDX-License-Identifier: MIT
 
-"""Unit tests for rc_racer_simulation.sensor_noise (DEV-02)."""
+"""Unit tests for rc_racer_simulation.sensor_noise (DEV-02, DEV-07)."""
 
 import math
 import os
@@ -16,12 +16,14 @@ from rc_racer_simulation.sensor_noise import (  # noqa: E402
     GaussMarkov,
     ImuNoise,
     NavSatNoise,
+    TruthAccelerometer,
     WheelOdomNoise,
     imu_covariances,
     navsat_covariance,
     offset_geodetic,
     perturb_orientation,
     quaternion_from_rpy,
+    rotate,
     validate,
     wheel_odom_covariances,
 )
@@ -143,3 +145,119 @@ class TestOrientation:
     def test_unit_norm(self):
         q = perturb_orientation(quaternion_from_rpy(0.3, 0.2, -2.0), 0.02, -0.02, 0.05)
         assert math.sqrt(sum(c * c for c in q)) == pytest.approx(1.0)
+
+
+G = 9.8
+DT = 0.01  # s, OdometryPublisher at 100 Hz
+
+
+def drive(accel, samples):
+    """Feed [(t, yaw, body velocity, body angular velocity)], reading after each."""
+    readings = []
+    for t, yaw, v, w in samples:
+        accel.add_motion(t, quaternion_from_rpy(0.0, 0.0, yaw), v, w)
+        reading = accel.read()
+        if reading is not None:
+            readings.append(reading)
+    return readings
+
+
+class TestTruthAccelerometer:
+    """An ideal accelerometer from the body's true motion (DEV-07)."""
+
+    def test_at_rest_reads_gravity(self):
+        accel = TruthAccelerometer((0.0, 0.0, 0.194), G)
+        readings = drive(accel, [(i * DT, 0.7, (0, 0, 0), (0, 0, 0)) for i in range(5)])
+        assert len(readings) == 4  # none until there are two samples
+        for f in readings:
+            assert f == pytest.approx((0.0, 0.0, G))
+
+    def test_pitched_at_rest(self):
+        """Nose pitched by theta at rest: gravity shows on x (as the estimator expects)."""
+        theta = 0.1
+        q = quaternion_from_rpy(0.0, theta, 0.0)
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        accel.add_motion(0.0, q, (0, 0, 0), (0, 0, 0))
+        accel.add_motion(DT, q, (0, 0, 0), (0, 0, 0))
+        assert accel.read() == pytest.approx((-G * math.sin(theta), 0.0, G * math.cos(theta)))
+
+    @pytest.mark.parametrize('yaw', [0.0, 1.2, -2.5])
+    def test_forward_acceleration_at_any_heading(self, yaw):
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        a = 1.5
+        f = drive(accel, [(i * DT, yaw, (a * i * DT, 0, 0), (0, 0, 0)) for i in range(3)])[-1]
+        assert f == pytest.approx((a, 0.0, G))
+
+    def test_steady_turn_reads_centripetal_inwards(self):
+        """1 m/s at 0.8 rad/s left: v * omega on +y, nothing forward."""
+        v, omega = 1.0, 0.8
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        f = drive(accel, [(i * DT, omega * i * DT, (v, 0, 0), (0, 0, omega))
+                          for i in range(3)])[-1]
+        assert f[0] == pytest.approx(0.0, abs=0.01)
+        assert f[1] == pytest.approx(v * omega, rel=0.01)
+
+    def test_mount_offset_adds_centripetal(self):
+        """Spinning in place with the IMU 0.2 m ahead: -omega^2 * 0.2 on x."""
+        omega = 2.0
+        accel = TruthAccelerometer((0.2, 0.0, 0.0), G)
+        f = drive(accel, [(i * DT, omega * i * DT, (0, 0, 0), (0, 0, omega))
+                          for i in range(3)])[-1]
+        assert f[0] == pytest.approx(-omega * omega * 0.2, rel=0.01)
+
+    def test_impact_shows_its_full_velocity_loss(self):
+        """Stopped from 1 m/s within one 10 ms interval: the readings carry all of it."""
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        speeds = [1.0] * 5 + [0.08] + [0.0] * 5
+        readings = drive(accel, [(i * DT, 0.0, (v, 0, 0), (0, 0, 0))
+                                 for i, v in enumerate(speeds)])
+        assert sum(f[0] * DT for f in readings) == pytest.approx(-1.0)
+        assert min(f[0] for f in readings) < -50.0  # far beyond braking (3 m/s^2)
+
+    def test_stale_or_repeated_stamp_is_ignored(self):
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        q = quaternion_from_rpy(0.0, 0.0, 0.0)
+        accel.add_motion(0.0, q, (1.0, 0, 0), (0, 0, 0))
+        accel.add_motion(0.0, q, (5.0, 0, 0), (0, 0, 0))
+        accel.add_motion(-0.01, q, (5.0, 0, 0), (0, 0, 0))
+        accel.add_motion(DT, q, (1.0, 0, 0), (0, 0, 0))
+        assert accel.read() == pytest.approx((0.0, 0.0, G))
+
+    def test_no_new_motion_holds_the_last_reading(self):
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        q = quaternion_from_rpy(0.0, 0.0, 0.0)
+        assert accel.read() is None
+        accel.add_motion(0.0, q, (0.0, 0, 0), (0, 0, 0))
+        assert accel.read() is None  # one sample: no interval yet
+        accel.add_motion(DT, q, (0.02, 0, 0), (0, 0, 0))
+        first = accel.read()
+        assert first[0] == pytest.approx(2.0)
+        assert accel.read() == first
+
+    @pytest.mark.parametrize('pattern', [[1, 1, 1, 1], [2, 0, 1, 3, 0, 2], [0, 3, 1, 0, 0, 4]])
+    def test_irregular_interleaving_keeps_every_velocity_change(self, pattern):
+        """However motion samples and IMU reads interleave, the readings carry all of dv.
+
+        Regression (2026-11-24): holding only the latest sample dropped one
+        when two arrived between IMU messages; a spike and the spike that
+        undoes it stopped cancelling, and an IMU-only speed drifted 0.3 m/s.
+        """
+        accel = TruthAccelerometer((0.0, 0.0, 0.0), G)
+        q = quaternion_from_rpy(0.0, 0.0, 0.0)
+        speeds = iter([0.0, 0.4, 1.3, 0.9, 1.0, 2.0, 1.5, 1.0, 1.2, 0.7, 1.0, 1.0, 1.0, 1.0])
+        t, v = 0.0, next(speeds)
+        accel.add_motion(t, q, (v, 0, 0), (0, 0, 0))
+        last_t, dv = t, 0.0
+        for count in pattern:  # motion samples, then one IMU read
+            for _ in range(count):
+                t, v = t + DT, next(speeds)
+                accel.add_motion(t, q, (v, 0, 0), (0, 0, 0))
+            reading = accel.read()
+            if reading is not None and count:
+                dv += reading[0] * (t - last_t)
+                last_t = t
+        assert dv == pytest.approx(v)  # started from rest
+
+    def test_rotate_matches_yaw(self):
+        assert rotate(quaternion_from_rpy(0, 0, math.pi / 2), (1.0, 0.0, 0.0)) == \
+            pytest.approx((0.0, 1.0, 0.0))

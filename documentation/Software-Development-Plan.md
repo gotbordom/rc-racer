@@ -644,7 +644,8 @@ Gazebo's IMU, GNSS and wheel odometry are **noise-free** and published as truth 
 | `/camera`      | `sensor_msgs/Image`        | gz → ROS     | `Sensors` (ogre2)                       | 30 Hz  |
 | `/camera_info` | `sensor_msgs/CameraInfo`   | gz → ROS     | `Sensors` (ogre2)                       | 30 Hz  |
 | `/wheel/odom`  | `nav_msgs/Odometry`        | gz → ROS     | `AckermannSteering` → sensor adapter    | 50 Hz  |
-| `/sim/truth/imu`, `/sim/truth/navsat`, `/sim/truth/wheel_odom` | as above | gz → ROS | Gazebo, noise-free (tests only) | as above |
+| `/sim/truth/imu`, `/sim/truth/navsat`, `/sim/truth/wheel_odom` | as above | gz → ROS | Gazebo, noise-free (tests only); `/sim/truth/imu` from the sensor adapter: ideal accelerometer from true motion (DEV-07) | as above |
+| `/sim/truth/body_odom` | `nav_msgs/Odometry` | gz → ROS | `OdometryPublisher`: true body pose and velocity, stamped (tests only) | 100 Hz |
 | `/joint_states`| `sensor_msgs/JointState`   | gz → ROS     | `JointStatePublisher`   | -      |
 | `/clock`       | `rosgraph_msgs/Clock`      | gz → ROS     | (simulation time)       | -      |
 | `/cmd_vel`     | `geometry_msgs/Twist`      | ROS → gz     | `AckermannSteering`     | -      |

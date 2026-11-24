@@ -134,12 +134,17 @@ def generate_launch_description():
             '/wheel/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
             # Joint states (wheel spin + steering angle) for robot_state_publisher
             '/joint_states@sensor_msgs/msg/JointState[ignition.msgs.Model',
+            # True motion of the body (OdometryPublisher), stamped
+            '/body_odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
             # Ground-truth pose of every moving model, in the world frame (= map)
             dynamic_pose_topic + ['@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V'],
         ],
         # Gazebo sensors are noise-free: publish them as truth for the sensor adapter
         remappings=[
-            ('/imu', '/sim/truth/imu'),
+            # Gazebo's IMU samples acceleration at an instant and misses contact
+            # impulses (DEV-07); the sensor adapter publishes the IMU truth
+            ('/imu', '/sim/gazebo/imu'),
+            ('/body_odom', '/sim/truth/body_odom'),
             ('/navsat', '/sim/truth/navsat'),
             ('/wheel/odom', '/sim/truth/wheel_odom'),
             (dynamic_pose_topic, '/sim/truth/poses'),

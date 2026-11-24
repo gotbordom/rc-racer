@@ -65,6 +65,7 @@ ROUTE = [
     (36.0, 6.0), (43.5, -1.5), (30.0, -6.0), (10.0, -3.0), (2.0, -1.0),
 ]
 SPEED = 1.0                 # m/s
+STOP_DECEL = 1.0            # m/s^2 at the end, inside the grip at mu 0.5 (~1.7)
 LOOKAHEAD = 2.5             # m, pure pursuit
 WHEELBASE = 0.384           # m
 MAX_STEERING = 0.52         # rad
@@ -256,9 +257,16 @@ class TestStateEstimationInSim(unittest.TestCase):
             max_cross_track = max(max_cross_track, cross_track)
             self.assertLess(cross_track, MAX_CROSS_TRACK,
                             f'driver left the route at {pose} (test problem, not the estimator)')
-            sim.command(v, omega)
             if done:
                 break
+            sim.command(v, omega)
+            sim.sleep_sim(0.05)
+        # Ease to a stop: an instant stop slows the wheel at the drive's
+        # 3 m/s^2, which on mu 0.5 is a real braking slide (VAL-006's case,
+        # not this test's).
+        stop_start = sim.now()
+        while sim.now() - stop_start < SPEED / STOP_DECEL:
+            sim.command(SPEED - STOP_DECEL * (sim.now() - stop_start), 0.0)
             sim.sleep_sim(0.05)
         sim.command(0.0, 0.0)
         sim.sleep_sim(1.0)  # roll to a stop; keep comparing

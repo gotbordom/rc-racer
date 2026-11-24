@@ -22,6 +22,9 @@ Validates (VEH.GNC.SE spec §7):
     toward the start, VAL-016)
   - REQ-GNC-002 (VAL-009): /odom speed follows the true wheel speed
     (/sim/truth/wheel_odom) with no bias while cruising and no lag
+  - VAL-013: the full TF tree odom -> base_footprint -> base_link ->
+    sensors resolves, and only state_estimation and robot_state_publisher
+    publish /tf (Architecture Conventions §2.3)
 
 The measured numbers are printed as a table, so a run also documents the
 estimator's performance.
@@ -45,10 +48,12 @@ import launch_testing.asserts
 import launch_testing.markers
 import rclpy
 import yaml
+from rclpy.time import Time
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from se_sim import compare, SimRecorder, wrap
+from tf2_ros import Buffer, TransformListener
 
 DRIVE_TIMEOUT_S = 600.0     # wall, for the whole loop
 
@@ -86,6 +91,14 @@ CRUISE_BAND = 0.05          # m/s
 MAX_SPEED_BIAS = 0.02       # m/s
 MAX_SPEED_LAG_S = 0.05
 MAX_SHIFT_S = 0.3
+# VAL-013: frames that must resolve from odom, and the only /tf publishers
+TF_PARENTS = {
+    'base_footprint': 'odom', 'base_link': 'base_footprint', 'imu_link': 'base_link',
+    'gps_link': 'base_link', 'camera_link': 'base_link', 'camera_optical_link': 'camera_link',
+}
+SENSOR_FRAMES = list(TF_PARENTS)
+TF_PUBLISHERS = {'state_estimation', 'robot_state_publisher'}
+TF_TIMEOUT_S = 10.0         # wall
 
 # Per-sample trace (truth vs estimate), saved with the test results so a
 # failure can be analysed. ctest runs in the package's build directory.
@@ -343,6 +356,23 @@ class TestStateEstimationInSim(unittest.TestCase):
         self.assertGreater(n_cruise, 100, 'VAL-009: too few cruise samples')
         self.assertLessEqual(abs(bias), MAX_SPEED_BIAS, 'VAL-009: speed biased against the wheel')
         self.assertLessEqual(abs(lag), MAX_SPEED_LAG_S, 'VAL-009: speed lags the wheel')
+
+    def test_tf_tree_and_publishers(self):
+        """VAL-013: odom -> base_footprint -> base_link -> sensors; two /tf publishers."""
+        buffer = Buffer()
+        TransformListener(buffer, self.sim.node)
+        missing = list(SENSOR_FRAMES)
+        deadline = time.monotonic() + TF_TIMEOUT_S
+        while missing and time.monotonic() < deadline:
+            missing = [f for f in missing if not buffer.can_transform('odom', f, Time())]
+            time.sleep(0.1)
+        self.assertEqual(missing, [], 'VAL-013: frames not reachable from odom')
+        parents = {frame: info['parent']
+                   for frame, info in yaml.safe_load(buffer.all_frames_as_yaml()).items()}
+        for frame, parent in TF_PARENTS.items():
+            self.assertEqual(parents.get(frame), parent, f'VAL-013: parent of {frame}')
+        publishers = {p.node_name for p in self.sim.node.get_publishers_info_by_topic('/tf')}
+        self.assertEqual(publishers, TF_PUBLISHERS, 'VAL-013: unexpected /tf publishers')
 
 
 @launch_testing.post_shutdown_test()

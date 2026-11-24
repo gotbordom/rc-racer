@@ -21,9 +21,10 @@ state_estimation reports health at 10 Hz here instead of 1 Hz
 be timed to about 0.1 s.
 
 A scenario marked expected_fail documents a known failure. It names the
-check that fails (expected_fail.failing, matched against the failure
-text): the test passes while that check fails and nothing else does, and
-fails once it passes, so the mark gets removed when the bug is fixed.
+checks that fail (expected_fail.failing: text, or a list, matched against
+the failure messages): the test passes while at least one of them fails
+and nothing else does, and fails once none do, so the mark gets removed
+when the bug is fixed.
 
 Characteristics:
   - SLOW: ~1 minute each (Gazebo startup + the scenario's sim time)
@@ -53,7 +54,10 @@ COMMAND_PERIOD_S = 0.05     # sim; 20 Hz commands, as the pad sends
 STOP_S = 1.0                # sim; keep recording after the last step
 DIAGNOSTICS_PERIOD_S = 0.1  # sim; health report period in these runs
 DIAGNOSTICS_LAG_S = 1.5 * DIAGNOSTICS_PERIOD_S
-MAX_STEP = 0.1              # m between consecutive /odom samples (no jumps)
+# REQ-GNC-002 continuity: how far the estimate may move between consecutive
+# /odom samples beyond what its own speed explains (m). Scenarios may set
+# max_jump; the L2 loop at 1 m/s uses a plain 0.1 m step limit instead.
+MAX_JUMP = 0.05
 STEP_KEYS = {
     'duration', 'speed', 'speed_end', 'steer', 'expect_slip', 'expect_slip_within',
     'min_consistent_fraction',
@@ -61,7 +65,7 @@ STEP_KEYS = {
 CHECK_KEYS = {
     'max_position_error', 'final_position_error', 'max_yaw_error_deg',
     'min_consistent_fraction', 'slip_events', 'never_error', 'ends_ok', 'settles',
-    'covariance_dip',
+    'covariance_dip', 'max_jump',
 }
 
 
@@ -82,8 +86,11 @@ def load_scenario(path):
     if unknown:
         raise ValueError(f'{path}: unknown checks {unknown}')
     expected_fail = scenario.get('expected_fail')
-    if expected_fail is not None and set(expected_fail) != {'reason', 'failing'}:
-        raise ValueError(f'{path}: expected_fail needs reason and failing')
+    if expected_fail is not None:
+        if set(expected_fail) != {'reason', 'failing'}:
+            raise ValueError(f'{path}: expected_fail needs reason and failing')
+        if isinstance(expected_fail['failing'], str):
+            expected_fail['failing'] = [expected_fail['failing']]
     return scenario
 
 
@@ -192,8 +199,11 @@ def run_checks(checks, steps, windows, samples, health):
     last = samples[-1]
     max_yaw = math.degrees(max(s.yaw_error for s in samples))
     consistent = sum(s.consistent for s in samples) / len(samples)
-    max_step = max(math.hypot(b.est[0] - a.est[0], b.est[1] - a.est[1])
-                   for a, b in zip(samples, samples[1:]))
+    # Movement between samples beyond what the estimated speed explains
+    max_jump, jump_at = max(
+        (math.hypot(b.est[0] - a.est[0], b.est[1] - a.est[1])
+         - 0.5 * (abs(a.v) + abs(b.v)) * (b.t - a.t), b.t)
+        for a, b in zip(samples, samples[1:]))
     total_slips = slip_events_between(health, samples[0].t, samples[-1].t + DIAGNOSTICS_LAG_S)
     errors = [h.message for h in health if h.is_error]
     metrics += [
@@ -202,13 +212,15 @@ def run_checks(checks, steps, windows, samples, health):
         f'final position error    {last.error:8.3f} m',
         f'max yaw error           {max_yaw:8.2f} deg',
         f'inside 3-sigma ellipse  {100.0 * consistent:8.1f} %',
-        f'max step between msgs   {max_step:8.3f} m',
+        f'max jump between msgs   {max_jump:8.3f} m (beyond speed x dt)',
         f'final speed estimate    {last.v:+8.3f} m/s',
         f'slip events             {total_slips:8d}',
         f'diagnostics ERRORs      {len(errors):8d}',
         f'final health            {health[-1].message if health else "none"}',
     ]
-    check(max_step <= MAX_STEP, f'estimate jumped {max_step:.3f} m between samples')
+    limit = checks.get('max_jump', MAX_JUMP)
+    check(max_jump <= limit, f'estimate jumped {max_jump:.3f} m beyond its speed at '
+          f'{jump_at - samples[0].t:.2f} s (max {limit} m)')
 
     if 'max_position_error' in checks:
         limit = checks['max_position_error']
@@ -327,9 +339,9 @@ class TestScenario(unittest.TestCase):
               + (f'  expected to fail: {expected_fail["reason"]}\n' if expected_fail else ''),
               flush=True)
         if expected_fail:
-            known = [f for f in failures if expected_fail['failing'] in f]
+            known = [f for f in failures if any(k in f for k in expected_fail['failing'])]
             self.assertTrue(known, f'{SCENARIO["id"]} now passes '
-                            f'({expected_fail["failing"]!r}): remove expected_fail from '
+                            f'({expected_fail["failing"]}): remove expected_fail from '
                             f'{NAME}.yaml and update the register (SDP §3.6)')
             failures = [f for f in failures if f not in known]
         self.assertEqual(failures, [], f'{SCENARIO["id"]} {NAME}')

@@ -26,15 +26,17 @@ checks:                     # every check is optional
   ends_ok: true             # last health report is OK
   settles: true             # speed estimate within 0.05 m/s of 0 at the end
   covariance_dip: {min_drop: 0.03}  # out and back: variance falls, then grows
+  max_jump: 0.05            # m an /odom sample may move beyond speed x dt (default 0.05)
 expected_fail:              # known failure: passes while this check, and only it, fails
   reason: "why, and the open item"
-  failing: "slip in step 2 detected"   # text of the failure it expects
+  failing: "slip in step 2"   # text of the failure it expects (or a list of them)
 ```
 
 After the last step the car is stopped and recorded for 1 s more.
 state_estimation reports health at 10 Hz in these runs (1 Hz normally), so
-slip detection is timed to about 0.1 s. A
-`/odom` jump of more than 0.1 m between samples always fails.
+slip detection is timed to about 0.1 s. The
+continuity check always runs: an `/odom` sample may not move more than
+`max_jump` (0.05 m) beyond what the estimated speed explains.
 
 The car spawns at the origin facing +x. The world is a flat 100 x 100 m
 plane, so keep scenarios within about 40 m of the start.

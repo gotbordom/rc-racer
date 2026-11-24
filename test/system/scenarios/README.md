@@ -41,6 +41,9 @@ continuity check always runs: an `/odom` sample may not move more than
 The car spawns at the origin facing +x. The world is a flat 100 x 100 m
 plane, so keep scenarios within about 40 m of the start.
 
+At shutdown every process must exit 0, except that Gazebo may be killed
+(it sometimes hangs, #12); a warning is printed when it is.
+
 Run one: `make test-system FILTER=test_scenario_<name>`. Each writes
 `scenario_<name>_trace.csv` (truth against estimate) to
 `test/system/results/`.

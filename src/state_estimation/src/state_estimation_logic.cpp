@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "state_estimation/pinned_hold.hpp"
 #include "state_estimation/slip_checks.hpp"
 
 namespace state_estimation
@@ -114,8 +115,7 @@ void StateEstimationLogic::reset()
   history_.clear();
   agreeing_since_.reset();
   spread_.clear();
-  after_impact_ = false;
-  pinned_since_.reset();
+  hold_.reset();
   slide_in_slip_ = false;
 }
 
@@ -228,29 +228,19 @@ void StateEstimationLogic::spread_since(const Eigen::Vector2d & before)
   spread_.add(moved);
 }
 
-void StateEstimationLogic::restart_from_impact()
+double StateEstimationLogic::restart_from_impact()
 {
-  speed_before_impact_ = state_.mean(kSpeed);
+  double speed_before = state_.mean(kSpeed);
   // An impact spread over two cycles: the first one's drop was under the
   // slip threshold, so that cycle's wheel update pulled the speed back up
   // and part of the impact was lost (VAL-007, 2026-11-24: stranded at
   // 0.38 m/s, too fast to count as pinned). Take the speed from before the
   // impact plus the IMU since instead: the wheel's pull is undone.
   if (const auto before = imu_reference_speed(config_.slip_impact_lookback)) {
-    speed_before_impact_ = history_.at(before->index).speed;
+    speed_before = history_.at(before->index).speed;
     state_.mean(kSpeed) = before->speed;
   }
-}
-
-void StateEstimationLogic::take_back_distance_since_impact()
-{
-  // Pinned means the car stopped at the impact; whatever the estimate drove
-  // since, on the IMU-only speed the impact left (0.3-0.5 m/s until the IMU
-  // goes quiet, VAL-019), is error. Take it back like a slip correction:
-  // spread out, so odom stays continuous.
-  const double distance = history_.distance_after(impact_time_);
-  const double yaw = state_.mean(kYaw);
-  spread_.add(-distance * Eigen::Vector2d(std::cos(yaw), std::sin(yaw)));
+  return speed_before;
 }
 
 double StateEstimationLogic::correct_window_retroactively(const ReferenceSpeed & from)
@@ -402,48 +392,27 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     const bool stationary = std::abs(wheel.speed) < config_.stationary_speed &&
       !status_.imu_stale && std::abs(last_yaw_rate_) < config_.stationary_yaw_rate &&
       std::abs(forward_accel_) < config_.stationary_accel;
-    // Pinned (VAL-019): after an impact that took at least
-    // slip_pinned_fraction of the car's speed, with the IMU quiet and the
-    // wheel still disagreeing (this is a slip), the car is stopped against
-    // something, whatever the spinning wheels say. Hold the speed at 0 and
-    // suspend the max_duration release, which exists because IMU-only speed
-    // drifts: a quiet IMU after a stop is the best evidence there is.
-    // Decided by the impact's outcome, not its spike: a bump that lets the
-    // car carry on keeps most of its speed and never pins, and a glancing
-    // blow slows the wheels too, so it isn't a slip. It ends when the IMU
-    // shows the car has picked up slip_pinned_speed since pinning, or the
-    // wheels stop, or (a backstop) after slip_pinned_max_duration.
-    if (impact && !after_impact_) {
-      after_impact_ = true;
-      restart_from_impact();
+    // Pinned against an obstacle after an impact (pinned_hold.hpp).
+    if (impact && !hold_.after_impact()) {
+      hold_.impact(impact_time_, restart_from_impact());
     }
     const bool imu_quiet = !status_.imu_stale &&
       std::abs(last_yaw_rate_) < config_.stationary_yaw_rate &&
       std::abs(forward_accel_) < config_.stationary_accel;
-    const bool stopped_by_impact = after_impact_ && imu_quiet &&
-      std::abs(state_.mean(kSpeed)) <
-      (1.0 - config_.slip_pinned_fraction) * std::abs(speed_before_impact_);
-    bool pinned = false;
-    if (pinned_since_) {
-      const double picked_up = history_.accel_integral() - pinned_accel_integral_;
-      if (std::abs(picked_up) >= config_.slip_pinned_speed) {
-        // Moving again: an ordinary slip from here, on the IMU's speed.
-        state_.mean(kSpeed) = picked_up;
-        after_impact_ = false;
-        pinned_since_.reset();
-      } else {
-        pinned = history_.elapsed() - *pinned_since_ < config_.slip_pinned_max_duration;
-      }
-    } else if (stopped_by_impact) {
-      pinned_since_ = history_.elapsed();
-      pinned_accel_integral_ = history_.accel_integral();
-      pinned = true;
-      take_back_distance_since_impact();
+    const PinnedAction hold = hold_.update(
+      history_, state_.mean(kSpeed), imu_quiet,
+      {config_.slip_pinned_fraction, config_.slip_pinned_speed, config_.slip_pinned_max_duration});
+    if (hold.speed) {
+      state_.mean(kSpeed) = *hold.speed;
     }
-    if (pinned) {
-      state_.mean(kSpeed) = 0.0;
+    if (hold.take_back) {
+      const double yaw = state_.mean(kYaw);
+      spread_.add(-*hold.take_back * Eigen::Vector2d(std::cos(yaw), std::sin(yaw)));
+    }
+    if (hold.pinned) {
       slip_since_ = history_.elapsed();  // max_duration counts from leaving pinned
     }
+    const bool pinned = hold.pinned;
     status_.pinned = pinned;
     const bool too_long = !pinned && history_.elapsed() - slip_since_ >= config_.slip_max_duration;
     if (stationary || too_long) {
@@ -455,10 +424,9 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     ++status_.slip_events;
     slip_since_ = history_.elapsed();
     agreeing_since_.reset();
-    after_impact_ = impact;
-    pinned_since_.reset();
+    hold_.reset();
     if (impact) {
-      restart_from_impact();
+      hold_.impact(impact_time_, restart_from_impact());
     }
     if (window_slip) {
       // The estimate followed the slipping wheel over the window; the IMU
@@ -472,8 +440,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   status_.slip_detected = slipping;
   if (!slipping) {
     slide_in_slip_ = false;
-    after_impact_ = false;
-    pinned_since_.reset();
+    hold_.reset();
     status_.pinned = false;
   }
 

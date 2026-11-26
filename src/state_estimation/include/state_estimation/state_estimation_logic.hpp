@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 
+#include "state_estimation/pinned_hold.hpp"
 #include "state_estimation/robot_frame.hpp"
 #include "state_estimation/robot_state.hpp"
 #include "state_estimation/sensor_fusion_method.hpp"
@@ -250,19 +251,16 @@ private:
   /// slip.
   std::optional<ReferenceSpeed> imu_reference_speed(double age) const;
 
-  /// Restart the IMU-only speed from before an impact plus the IMU since.
-  void restart_from_impact();
-  /// On pinning: take back the distance driven since the impact.
-  void take_back_distance_since_impact();
+  /// Restart the IMU-only speed from before an impact plus the IMU since;
+  /// returns the speed before it.
+  double restart_from_impact();
 
   /// Undo the position change since `before` and spread it instead.
   void spread_since(const Eigen::Vector2d & before);
-  bool after_impact_{false};             ///< this slip started with or saw an impact
   bool slide_in_slip_{false};            ///< this slip included a slide
-  double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
   double impact_time_{0.0};              ///< s (history_.elapsed()), of the impact step
-  std::optional<double> pinned_since_;   ///< when it last became pinned
-  double pinned_accel_integral_{0.0};    ///< history_.accel_integral() when pinned
+  /// Pinned against an obstacle after an impact (pinned_hold.hpp).
+  PinnedHold hold_;
 
   /// A slip caught by the windowed check: the estimate followed the wheel
   /// since the window start, the last speed trusted. Rewrite the history as

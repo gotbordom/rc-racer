@@ -33,7 +33,8 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
 : config_(config),
   frame_(make_robot_frame(config.motion_model, config.robot)),
   fusion_(make_fusion_method(config.fusion_method)),
-  history_(config.slip_window)
+  history_(config.slip_window),
+  spread_(config.slip_correction_time)
 {
   require_positive(config.imu_timeout, "inputs.imu.timeout");
   require_positive(config.wheel_odom_timeout, "inputs.wheel_odom.timeout");
@@ -110,8 +111,7 @@ void StateEstimationLogic::reset()
   update_staleness();
   history_.clear();
   agreeing_since_.reset();
-  pending_correction_.setZero();
-  correction_time_left_ = 0.0;
+  spread_.clear();
   after_impact_ = false;
   pinned_since_.reset();
   slide_in_slip_ = false;
@@ -193,13 +193,11 @@ void StateEstimationLogic::predict(double dt)
     // correlation with the position (built while v_y drifted) moves the
     // position at once (0.15 m in VAL-004/018). Spread that, as at a slip's
     // end, so odom stays continuous.
-    const Eigen::Vector2d moved = Eigen::Vector2d(state_.mean(kX), state_.mean(kY)) - before;
-    state_.mean(kX) = before.x();
-    state_.mean(kY) = before.y();
-    pending_correction_ -= moved;
-    correction_time_left_ = config_.slip_correction_time;
+    spread_since(before);
   }
-  apply_pending_correction(dt);
+  const Eigen::Vector2d share = spread_.step(dt);
+  state_.mean(kX) += share.x();
+  state_.mean(kY) += share.y();
   guard_numerics();
 
   // The forward speed's own rate of change, v_x' = a_x + omega x v_y, is
@@ -220,17 +218,12 @@ std::optional<ReferenceSpeed> StateEstimationLogic::imu_reference_speed(double a
   return history_.reference(age);
 }
 
-void StateEstimationLogic::apply_pending_correction(double dt)
+void StateEstimationLogic::spread_since(const Eigen::Vector2d & before)
 {
-  if (correction_time_left_ <= 0.0) {
-    return;
-  }
-  const double share = std::min(1.0, dt / correction_time_left_);
-  const Eigen::Vector2d step = share * pending_correction_;
-  state_.mean(kX) -= step.x();
-  state_.mean(kY) -= step.y();
-  pending_correction_ -= step;
-  correction_time_left_ -= dt;
+  const Eigen::Vector2d moved = Eigen::Vector2d(state_.mean(kX), state_.mean(kY)) - before;
+  state_.mean(kX) = before.x();
+  state_.mean(kY) = before.y();
+  spread_.add(moved);
 }
 
 void StateEstimationLogic::restart_from_impact()
@@ -255,8 +248,7 @@ void StateEstimationLogic::take_back_distance_since_impact()
   // spread out, so odom stays continuous.
   const double distance = history_.distance_after(impact_time_);
   const double yaw = state_.mean(kYaw);
-  pending_correction_ += distance * Eigen::Vector2d(std::cos(yaw), std::sin(yaw));
-  correction_time_left_ = config_.slip_correction_time;
+  spread_.add(-distance * Eigen::Vector2d(std::cos(yaw), std::sin(yaw)));
 }
 
 double StateEstimationLogic::correct_window_retroactively(const ReferenceSpeed & from)
@@ -269,8 +261,7 @@ double StateEstimationLogic::correct_window_retroactively(const ReferenceSpeed &
   // Applied over slip_correction_time, not at once: odom must stay
   // continuous (REP-105; control runs on it). The covariance grows now, so
   // the estimate is honest while the position catches up.
-  pending_correction_ += correction * along;
-  correction_time_left_ = config_.slip_correction_time;
+  spread_.add(-correction * along);
   // The IMU path is only as good as the speed it starts from, over the
   // window; and the window start may itself have been partly off.
   const double span = history_.elapsed() - start.time;
@@ -565,11 +556,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     // the position, through its correlation with the speed: right, but at
     // once (0.16 m in one step in VAL-004). Spread that part like the other
     // corrections, so odom stays continuous; the speed is corrected now.
-    const Eigen::Vector2d moved = Eigen::Vector2d(state_.mean(kX), state_.mean(kY)) - before;
-    state_.mean(kX) = before.x();
-    state_.mean(kY) = before.y();
-    pending_correction_ -= moved;
-    correction_time_left_ = config_.slip_correction_time;
+    spread_since(before);
   }
   guard_numerics();
   last_wheel_speed_ = wheel.speed;

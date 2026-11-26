@@ -20,6 +20,7 @@
 #include "state_estimation/robot_state.hpp"
 #include "state_estimation/sensor_fusion_method.hpp"
 #include "state_estimation/speed_history.hpp"
+#include "state_estimation/spread_correction.hpp"
 
 namespace state_estimation
 {
@@ -254,10 +255,8 @@ private:
   /// On pinning: take back the distance driven since the impact.
   void take_back_distance_since_impact();
 
-  /// Move the position by this step's share of a pending correction.
-  void apply_pending_correction(double dt);
-  Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
-  double correction_time_left_{0.0};
+  /// Undo the position change since `before` and spread it instead.
+  void spread_since(const Eigen::Vector2d & before);
   bool after_impact_{false};             ///< this slip started with or saw an impact
   bool slide_in_slip_{false};            ///< this slip included a slide
   double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
@@ -305,6 +304,8 @@ private:
 
   /// The recent past the slip checks look back over (speed_history.hpp).
   SpeedHistory history_;
+  /// Position corrections applied over time (spread_correction.hpp).
+  SpreadCorrection spread_;
   /// While slipping: since when the wheel has agreed again (hysteresis).
   std::optional<double> agreeing_since_;
   double slip_since_{0.0};       ///< history_.elapsed() when the current slip started

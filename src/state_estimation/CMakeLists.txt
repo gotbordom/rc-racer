@@ -28,6 +28,7 @@ include_directories(include)
 # Logic library (pure C++, no ROS): motion models and filter
 add_library(${PROJECT_NAME}_logic
   src/robot_frame.cpp
+  src/speed_history.cpp
   src/extended_kalman_filter.cpp
   src/state_estimation_logic.cpp
 )
@@ -92,6 +93,8 @@ if(BUILD_TESTING)
   # Run via: colcon test --packages-select state_estimation
   ament_add_gtest(test_robot_frame test/test_robot_frame.cpp)
   target_link_libraries(test_robot_frame ${PROJECT_NAME}_logic)
+  ament_add_gtest(test_speed_history test/test_speed_history.cpp)
+  target_link_libraries(test_speed_history ${PROJECT_NAME}_logic)
   ament_add_gtest(test_state_estimation_logic test/test_state_estimation_logic.cpp)
   target_link_libraries(test_state_estimation_logic ${PROJECT_NAME}_logic)
   ament_add_gtest(test_message_conversions test/test_message_conversions.cpp)

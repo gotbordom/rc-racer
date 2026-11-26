@@ -32,7 +32,8 @@ bool valid_sample(double value, double variance)
 StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
 : config_(config),
   frame_(make_robot_frame(config.motion_model, config.robot)),
-  fusion_(make_fusion_method(config.fusion_method))
+  fusion_(make_fusion_method(config.fusion_method)),
+  history_(config.slip_window)
 {
   require_positive(config.imu_timeout, "inputs.imu.timeout");
   require_positive(config.wheel_odom_timeout, "inputs.wheel_odom.timeout");
@@ -107,7 +108,7 @@ void StateEstimationLogic::reset()
   status_.imu_age = imu_age;
   status_.wheel_age = wheel_age;
   update_staleness();
-  speed_history_.clear();
+  history_.clear();
   agreeing_since_.reset();
   pending_correction_.setZero();
   correction_time_left_ = 0.0;
@@ -201,39 +202,22 @@ void StateEstimationLogic::predict(double dt)
   apply_pending_correction(dt);
   guard_numerics();
 
-  elapsed_ += dt;
-  // The forward speed's own rate of change, v_x' = a_x + omega x v_y: what
-  // the slip windows compare the wheel against.
-  accel_integral_ += (inputs.forward_accel + state_.mean(kYawRate) * state_.mean(kSideSpeed)) * dt;
-  lateral_integral_ += predict_lateral_ * dt;
-  centripetal_integral_ += last_wheel_speed_ * last_yaw_rate_ * dt;
-  speed_history_.push_back(
-    {elapsed_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed), accel_integral_,
-      lateral_integral_, centripetal_integral_, last_yaw_rate_, last_wheel_speed_});
-  // Keep the newest sample that is at least slip_window old at the front.
-  while (speed_history_.size() > 1 && speed_history_[1].time <= elapsed_ - config_.slip_window) {
-    speed_history_.pop_front();
-  }
+  // The forward speed's own rate of change, v_x' = a_x + omega x v_y, is
+  // what the slip windows compare the wheel against.
+  history_.advance(
+    dt, inputs.forward_accel + state_.mean(kYawRate) * state_.mean(kSideSpeed), predict_lateral_,
+    last_wheel_speed_ * last_yaw_rate_, state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed),
+    last_yaw_rate_, last_wheel_speed_);
 }
 
-std::optional<StateEstimationLogic::ReferenceSpeed>
-StateEstimationLogic::imu_reference_speed(double age) const
+std::optional<ReferenceSpeed> StateEstimationLogic::imu_reference_speed(double age) const
 {
   // Needs fresh IMU over the whole span: without it the acceleration input is
   // 0 and the reference would call every real speed change slip.
-  if (speed_history_.empty() || status_.imu_stale ||
-    elapsed_ - speed_history_.front().time < age)
-  {
+  if (status_.imu_stale) {
     return std::nullopt;
   }
-  // The newest sample at least `age` old (the front is at least a window old).
-  std::size_t i = 0;
-  while (i + 1 < speed_history_.size() && speed_history_[i + 1].time <= elapsed_ - age) {
-    ++i;
-  }
-  const SpeedSample & then = speed_history_[i];
-  return ReferenceSpeed{
-    then.speed + (accel_integral_ - then.accel_integral), then.speed_variance, i};
+  return history_.reference(age);
 }
 
 void StateEstimationLogic::apply_pending_correction(double dt)
@@ -258,7 +242,7 @@ void StateEstimationLogic::restart_from_impact()
   // 0.38 m/s, too fast to count as pinned). Take the speed from before the
   // impact plus the IMU since instead: the wheel's pull is undone.
   if (const auto before = imu_reference_speed(config_.slip_impact_lookback)) {
-    speed_before_impact_ = speed_history_[before->index].speed;
+    speed_before_impact_ = history_.at(before->index).speed;
     state_.mean(kSpeed) = before->speed;
   }
 }
@@ -269,39 +253,17 @@ void StateEstimationLogic::take_back_distance_since_impact()
   // since, on the IMU-only speed the impact left (0.3-0.5 m/s until the IMU
   // goes quiet, VAL-019), is error. Take it back like a slip correction:
   // spread out, so odom stays continuous.
-  double distance = 0.0;
-  for (std::size_t i = 1; i < speed_history_.size(); ++i) {
-    const SpeedSample & s = speed_history_[i];
-    if (s.time > impact_time_) {
-      distance += s.speed * (s.time - speed_history_[i - 1].time);
-    }
-  }
+  const double distance = history_.distance_after(impact_time_);
   const double yaw = state_.mean(kYaw);
   pending_correction_ += distance * Eigen::Vector2d(std::cos(yaw), std::sin(yaw));
   correction_time_left_ = config_.slip_correction_time;
 }
 
-void StateEstimationLogic::rebase_history_before(std::size_t from)
-{
-  const SpeedSample anchor = speed_history_[from];
-  for (std::size_t i = 0; i < from; ++i) {
-    SpeedSample & s = speed_history_[i];
-    s.speed = anchor.speed - (anchor.accel_integral - s.accel_integral);
-    s.speed_variance = anchor.speed_variance;
-  }
-}
-
 double StateEstimationLogic::correct_window_retroactively(const ReferenceSpeed & from)
 {
-  const SpeedSample start = speed_history_[from.index];
-  double correction = 0.0;  // distance the wheel added over the IMU path
-  for (std::size_t i = from.index + 1; i < speed_history_.size(); ++i) {
-    SpeedSample & s = speed_history_[i];
-    const double imu_path = start.speed + (s.accel_integral - start.accel_integral);
-    correction += (s.speed - imu_path) * (s.time - speed_history_[i - 1].time);
-    s.speed = imu_path;
-    s.speed_variance = start.speed_variance;
-  }
+  const SpeedSample start = history_.at(from.index);
+  // Distance the wheel added over the IMU path
+  const double correction = history_.rewrite_as_imu_path(from.index);
   const double yaw = state_.mean(kYaw);
   const Eigen::Vector2d along(std::cos(yaw), std::sin(yaw));
   // Applied over slip_correction_time, not at once: odom must stay
@@ -311,7 +273,7 @@ double StateEstimationLogic::correct_window_retroactively(const ReferenceSpeed &
   correction_time_left_ = config_.slip_correction_time;
   // The IMU path is only as good as the speed it starts from, over the
   // window; and the window start may itself have been partly off.
-  const double span = elapsed_ - start.time;
+  const double span = history_.elapsed() - start.time;
   const double variance = start.speed_variance * span * span +
     std::pow(config_.slip_correction_uncertainty * correction, 2);
   state_.covariance.block<2, 2>(kX, kX) += variance * along * along.transpose();
@@ -412,9 +374,8 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     const double direction = reference->speed >= 0.0 ? 1.0 : -1.0;
     const bool wheel_behind = (reference->speed - wheel.speed) * direction > 0.0;
     const std::optional<ReferenceSpeed> recent = imu_reference_speed(0.5 * config_.slip_window);
-    const SpeedSample & mid = speed_history_[recent ? recent->index : reference->index];
-    const double span = elapsed_ - mid.time;
-    const double recent_accel = span > 0.0 ? (accel_integral_ - mid.accel_integral) / span : 0.0;
+    const double recent_accel =
+      history_.mean_accel_since(recent ? recent->index : reference->index);
     const bool braking = recent_accel * direction < -config_.slip_braking_accel;
     const double threshold =
       wheel_behind && braking ? config_.slip_braking_threshold : config_.slip_threshold;
@@ -424,7 +385,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   }
   const bool window_slip = window_gap && consistent;
   if (window_gap && !consistent && !status_.slip_detected) {
-    rebase_history_before(speed_history_.size() - 1);
+    history_.rebase_before(history_.size() - 1);
     ++status_.stale_history_rebases;
   }
   const bool wheel_slip = step_slip || window_slip;
@@ -447,13 +408,14 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   // only a shortfall counts.
   bool understeer = false;
   if (reference && lateral_available_) {
-    const SpeedSample & then = speed_history_[reference->index];
-    const double span = elapsed_ - then.time;
+    const SpeedSample & then = history_.at(reference->index);
+    const double span = history_.elapsed() - then.time;
     const bool turning = std::abs(last_yaw_rate_) > config_.slip_lateral_min_yaw_rate &&
       std::abs(then.yaw_rate) > config_.slip_lateral_min_yaw_rate;
     if (turning && span > 0.0) {
-      const double measured = (lateral_integral_ - then.lateral_integral) / span;
-      const double expected = (centripetal_integral_ - then.centripetal_integral) / span +
+      const double measured = (history_.lateral_integral() - then.lateral_integral) / span;
+      const double expected =
+        (history_.centripetal_integral() - then.centripetal_integral) / span +
         imu_lever_ * (last_yaw_rate_ - then.yaw_rate) / span;
       const double direction = expected >= 0.0 ? 1.0 : -1.0;
       understeer = (expected - measured) * direction > config_.slip_lateral_threshold;
@@ -470,18 +432,12 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   // since DEV-07 (~-50 m/s^2 into the bench); the drive brakes at 3.
   bool impact = false;
   if (const auto back = imu_reference_speed(config_.slip_impact_lookback)) {
-    const double direction = speed_history_[back->index].speed >= 0.0 ? 1.0 : -1.0;
-    for (std::size_t i = back->index + 1; i < speed_history_.size(); ++i) {
-      const SpeedSample & a = speed_history_[i - 1];
-      const SpeedSample & b = speed_history_[i];
-      const double dt = b.time - a.time;
-      if (dt > 0.0 &&
-        (b.accel_integral - a.accel_integral) / dt * direction < -config_.slip_impact_accel)
-      {
-        impact = true;
-        impact_time_ = b.time;
-        break;
-      }
+    const double direction = history_.at(back->index).speed >= 0.0 ? 1.0 : -1.0;
+    if (const auto when =
+      history_.first_step_beyond(back->index, config_.slip_impact_accel, direction))
+    {
+      impact = true;
+      impact_time_ = *when;
     }
   }
 
@@ -496,9 +452,10 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     if (!agrees) {
       agreeing_since_.reset();
     } else if (!agreeing_since_) {
-      agreeing_since_ = elapsed_;
+      agreeing_since_ = history_.elapsed();
     }
-    const bool agreed = agreeing_since_ && elapsed_ - *agreeing_since_ >= 0.5 * config_.slip_window;
+    const bool agreed = agreeing_since_ &&
+      history_.elapsed() - *agreeing_since_ >= 0.5 * config_.slip_window;
     // Safety nets, so the filter never stays on the IMU alone: the car is
     // clearly stopped (wheel ~0, IMU quiet), or the IMU-only stretch has
     // lasted too long. Then trust the wheel again from now on: re-anchor the
@@ -530,35 +487,35 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
       (1.0 - config_.slip_pinned_fraction) * std::abs(speed_before_impact_);
     bool pinned = false;
     if (pinned_since_) {
-      const double picked_up = accel_integral_ - pinned_accel_integral_;
+      const double picked_up = history_.accel_integral() - pinned_accel_integral_;
       if (std::abs(picked_up) >= config_.slip_pinned_speed) {
         // Moving again: an ordinary slip from here, on the IMU's speed.
         state_.mean(kSpeed) = picked_up;
         after_impact_ = false;
         pinned_since_.reset();
       } else {
-        pinned = elapsed_ - *pinned_since_ < config_.slip_pinned_max_duration;
+        pinned = history_.elapsed() - *pinned_since_ < config_.slip_pinned_max_duration;
       }
     } else if (stopped_by_impact) {
-      pinned_since_ = elapsed_;
-      pinned_accel_integral_ = accel_integral_;
+      pinned_since_ = history_.elapsed();
+      pinned_accel_integral_ = history_.accel_integral();
       pinned = true;
       take_back_distance_since_impact();
     }
     if (pinned) {
       state_.mean(kSpeed) = 0.0;
-      slip_since_ = elapsed_;  // max_duration counts from leaving pinned
+      slip_since_ = history_.elapsed();  // max_duration counts from leaving pinned
     }
     status_.pinned = pinned;
-    const bool too_long = !pinned && elapsed_ - slip_since_ >= config_.slip_max_duration;
+    const bool too_long = !pinned && history_.elapsed() - slip_since_ >= config_.slip_max_duration;
     if (stationary || too_long) {
       state_.mean(kSpeed) = wheel.speed;
-      speed_history_.clear();
+      history_.clear();
     }
     slipping = !(agreed || stationary || too_long);
   } else if (slipping) {
     ++status_.slip_events;
-    slip_since_ = elapsed_;
+    slip_since_ = history_.elapsed();
     agreeing_since_.reset();
     after_impact_ = impact;
     pinned_since_.reset();
@@ -588,11 +545,11 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   // acceleration leaves it alone.
   double early_variance = 0.0;
   if (const auto span = imu_reference_speed(config_.slip_accel_span)) {
-    const SpeedSample & then = speed_history_[span->index];
-    const double dt = elapsed_ - then.time;
+    const SpeedSample & then = history_.at(span->index);
+    const double dt = history_.elapsed() - then.time;
     if (dt > 0.0 && !status_.imu_stale) {
       const double wheel_accel = (wheel.speed - then.wheel_speed) / dt;
-      const double imu_accel = (accel_integral_ - then.accel_integral) / dt;
+      const double imu_accel = history_.mean_accel_since(span->index);
       const double excess = std::abs(wheel_accel - imu_accel) - config_.slip_accel_margin;
       if (excess > 0.0) {
         early_variance = std::pow(config_.slip_accel_gain * excess, 2);
@@ -616,10 +573,8 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   }
   guard_numerics();
   last_wheel_speed_ = wheel.speed;
-  if (!speed_history_.empty()) {  // after the update
-    speed_history_.back().speed = state_.mean(kSpeed);
-    speed_history_.back().speed_variance = state_.covariance(kSpeed, kSpeed);
-  }
+  // After the update
+  history_.update_latest(state_.mean(kSpeed), state_.covariance(kSpeed, kSpeed));
 }
 
 RobotState StateEstimationLogic::estimate() const

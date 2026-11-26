@@ -11,7 +11,6 @@
 #ifndef STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 #define STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 
-#include <deque>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -20,6 +19,7 @@
 #include "state_estimation/robot_frame.hpp"
 #include "state_estimation/robot_state.hpp"
 #include "state_estimation/sensor_fusion_method.hpp"
+#include "state_estimation/speed_history.hpp"
 
 namespace state_estimation
 {
@@ -244,21 +244,10 @@ public:
   const StateEstimationConfig & config() const {return config_;}
 
 private:
-  /// The estimate from `age` ago (the newest history sample at least that
-  /// old) plus the IMU acceleration since, and the variance it had then;
-  /// unset until that much fresh IMU history exists.
-  struct ReferenceSpeed
-  {
-    double speed;
-    double variance;
-    std::size_t index;  ///< of the history sample it starts from
-  };
+  /// history_.reference(age), but only with fresh IMU: without it the
+  /// acceleration input is 0 and every real speed change would look like
+  /// slip.
   std::optional<ReferenceSpeed> imu_reference_speed(double age) const;
-
-  /// History older than sample `from` holds speeds the IMU path from it
-  /// contradicts (an earlier, undetected slip left them): rewrite them as
-  /// that sample's speed minus the IMU integral back to them.
-  void rebase_history_before(std::size_t from);
 
   /// Restart the IMU-only speed from before an impact plus the IMU since.
   void restart_from_impact();
@@ -272,9 +261,9 @@ private:
   bool after_impact_{false};             ///< this slip started with or saw an impact
   bool slide_in_slip_{false};            ///< this slip included a slide
   double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
-  double impact_time_{0.0};              ///< s (elapsed_), of the impact step
+  double impact_time_{0.0};              ///< s (history_.elapsed()), of the impact step
   std::optional<double> pinned_since_;   ///< when it last became pinned
-  double pinned_accel_integral_{0.0};    ///< accel_integral_ when pinned
+  double pinned_accel_integral_{0.0};    ///< history_.accel_integral() when pinned
 
   /// A slip caught by the windowed check: the estimate followed the wheel
   /// since the window start, the last speed trusted. Rewrite the history as
@@ -310,32 +299,16 @@ private:
   double lateral_sum_{0.0};
   int lateral_samples_{0};
   double predict_lateral_{0.0};
-  double lateral_integral_{0.0};
-  double centripetal_integral_{0.0};
   double last_wheel_speed_{0.0};
   double imu_lever_{0.0};               ///< m, rear axle to IMU, from the last sample
   bool lateral_available_{false};       ///< the last IMU sample gave lateral force
 
-  /// For the windowed slip check: per predict step, the time, the speed
-  /// estimate and the running integral of the acceleration input.
-  struct SpeedSample
-  {
-    double time;
-    double speed;
-    double speed_variance;
-    double accel_integral;
-    double lateral_integral;      ///< of the measured lateral acceleration
-    double centripetal_integral;  ///< of wheel speed x yaw rate
-    double yaw_rate;              ///< IMU, at this sample
-    double wheel_speed;           ///< the last wheel reading, at this sample
-  };
-  std::deque<SpeedSample> speed_history_;
+  /// The recent past the slip checks look back over (speed_history.hpp).
+  SpeedHistory history_;
   /// While slipping: since when the wheel has agreed again (hysteresis).
   std::optional<double> agreeing_since_;
-  double slip_since_{0.0};       ///< elapsed_ when the current slip started
+  double slip_since_{0.0};       ///< history_.elapsed() when the current slip started
   double last_yaw_rate_{0.0};    ///< rad/s, from the last IMU sample
-  double elapsed_{0.0};
-  double accel_integral_{0.0};
 };
 
 }  // namespace state_estimation

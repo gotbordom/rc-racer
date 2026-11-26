@@ -152,6 +152,9 @@ struct StateEstimationConfig
   /// sideways while gripping (spec §6.1). Tight, so the filter matches the
   /// kinematic bicycle model. TBD.
   double no_slip_lateral_speed_stddev{0.02};
+  /// m/s. Its 1 sigma during a slide (understeer or yaw-rate slip): loose,
+  /// so v_y follows the IMU's lateral acceleration (VAL-018). TBD.
+  double no_slip_slide_lateral_speed_stddev{0.5};
   double slip_accel_margin{0.6};
   double slip_accel_gain{0.5};
   /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far
@@ -199,6 +202,8 @@ struct StateEstimationStatus
   bool understeer_detected{false};
   /// Pinned against an obstacle after an impact (see slip_impact_accel).
   bool pinned{false};
+  /// The no-slip constraint is relaxed: a slide, v_y follows the IMU.
+  bool side_slip_free{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -265,6 +270,7 @@ private:
   Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
   double correction_time_left_{0.0};
   bool after_impact_{false};             ///< this slip started with or saw an impact
+  bool slide_in_slip_{false};            ///< this slip included a slide
   double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
   double impact_time_{0.0};              ///< s (elapsed_), of the impact step
   std::optional<double> pinned_since_;   ///< when it last became pinned

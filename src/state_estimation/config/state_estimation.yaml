@@ -29,6 +29,7 @@ state_estimation:
       distance: 1.0e-3              # m^2/m along-track, varying wheel scale / scrub (TBD)
     no_slip:
       lateral_speed_stddev: 0.02      # m/s: rear axle sideways motion allowed while gripping (TBD)
+      slide_lateral_speed_stddev: 0.5 # m/s: the same in a slide, loose so v_y follows the IMU (TBD)
     slip:
       threshold: 0.3                # m/s, on top of 3 sigma of predicted speed (TBD)
       yaw_rate_margin: 0.2          # rad/s beyond the steering limit (TBD)

@@ -62,6 +62,8 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
   require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
   require_positive(config.no_slip_lateral_speed_stddev, "no_slip.lateral_speed_stddev");
+  require_positive(
+    config.no_slip_slide_lateral_speed_stddev, "no_slip.slide_lateral_speed_stddev");
   require_positive(config.slip_accel_span, "slip.accel_span");
   require_positive(config.slip_accel_margin, "slip.accel_margin");
   require_positive(config.slip_accel_gain, "slip.accel_gain");
@@ -111,6 +113,7 @@ void StateEstimationLogic::reset()
   correction_time_left_ = 0.0;
   after_impact_ = false;
   pinned_since_.reset();
+  slide_in_slip_ = false;
 }
 
 void StateEstimationLogic::predict(double dt)
@@ -170,9 +173,31 @@ void StateEstimationLogic::predict(double dt)
   // measures omega directly, and a constraint on both would let an error in
   // the lateral acceleration leak into the yaw rate (seen in the node test:
   // 0.168 rad/s for a 0.2 rad/s gyro, with a lateral reading of 0).
+  // In a slide (step 2, VAL-018) the rear axle does move sideways: the
+  // constraint drops to a loose prior, so v_y follows the IMU's lateral
+  // acceleration without drifting without bound. Not without lateral data,
+  // and not for spin or braking slips, where the car goes straight.
+  const bool sliding_now = status_.slip_detected && slide_in_slip_ && lateral_available_ &&
+    !status_.imu_stale;
+  const double no_slip_sigma = sliding_now ?
+    config_.no_slip_slide_lateral_speed_stddev : config_.no_slip_lateral_speed_stddev;
+  const bool regripped = status_.side_slip_free && !sliding_now;
+  status_.side_slip_free = sliding_now;
+  const Eigen::Vector2d before(state_.mean(kX), state_.mean(kY));
   fusion_->update(
     state_, kSideSpeed, state_.mean(kYawRate) * frame_->rear_axle_offset(),
-    config_.no_slip_lateral_speed_stddev * config_.no_slip_lateral_speed_stddev);
+    no_slip_sigma * no_slip_sigma);
+  if (regripped) {
+    // The constraint snapping tight again corrects v_y, and through its
+    // correlation with the position (built while v_y drifted) moves the
+    // position at once (0.15 m in VAL-004/018). Spread that, as at a slip's
+    // end, so odom stays continuous.
+    const Eigen::Vector2d moved = Eigen::Vector2d(state_.mean(kX), state_.mean(kY)) - before;
+    state_.mean(kX) = before.x();
+    state_.mean(kY) = before.y();
+    pending_correction_ -= moved;
+    correction_time_left_ = config_.slip_correction_time;
+  }
   apply_pending_correction(dt);
   guard_numerics();
 
@@ -435,6 +460,9 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
     }
   }
   status_.understeer_detected = understeer;
+  if (understeer || sliding) {
+    slide_in_slip_ = true;  // reset when the slip ends
+  }
   bool slipping = wheel_slip || sliding || understeer;
 
   // Impact (VAL-019, #14): a deceleration far beyond what braking can do,
@@ -548,6 +576,7 @@ void StateEstimationLogic::update_wheel_speed(const WheelSpeedMeasurement & whee
   const bool slip_ended = status_.slip_detected && !slipping;
   status_.slip_detected = slipping;
   if (!slipping) {
+    slide_in_slip_ = false;
     after_impact_ = false;
     pinned_since_.reset();
     status_.pinned = false;

@@ -137,6 +137,14 @@ struct StateEstimationConfig
   /// s. The retroactive correction is applied over this long, so odom stays
   /// continuous. TBD.
   double slip_correction_time{0.5};
+  /// In a slide, the forward speed from the turn (turn_speed.hpp): only while
+  /// turning at least slip_turn_min_yaw_rate (rad/s), with the yaw rate
+  /// changing less than slip_turn_max_yaw_change (rad/s) over the window;
+  /// 1-sigma slip_turn_stddev (m/s) + slip_turn_relative_stddev x speed. TBD.
+  double slip_turn_min_yaw_rate{1.0};
+  double slip_turn_max_yaw_change{0.5};
+  double slip_turn_stddev{0.1};
+  double slip_turn_relative_stddev{0.05};
   /// m/s^2. Understeer (a slide the yaw-rate check cannot see, VAL-004):
   /// over slip_window, the measured lateral acceleration falls short of the
   /// wheel speed x yaw rate by more than this. Checked only while turning
@@ -206,6 +214,8 @@ struct StateEstimationStatus
   bool pinned{false};
   /// The no-slip constraint is relaxed: a slide, v_y follows the IMU.
   bool side_slip_free{false};
+  /// The forward speed was measured from the turn this step (a slide).
+  bool turn_speed_used{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};

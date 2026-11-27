@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME}_logic
   src/speed_history.cpp
   src/slip_checks.cpp
   src/pinned_hold.cpp
+  src/turn_speed.cpp
   src/extended_kalman_filter.cpp
   src/state_estimation_logic.cpp
 )
@@ -103,6 +104,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_slip_checks ${PROJECT_NAME}_logic)
   ament_add_gtest(test_pinned_hold test/test_pinned_hold.cpp)
   target_link_libraries(test_pinned_hold ${PROJECT_NAME}_logic)
+  ament_add_gtest(test_turn_speed test/test_turn_speed.cpp)
+  target_link_libraries(test_turn_speed ${PROJECT_NAME}_logic)
   ament_add_gtest(test_state_estimation_logic test/test_state_estimation_logic.cpp)
   target_link_libraries(test_state_estimation_logic ${PROJECT_NAME}_logic)
   ament_add_gtest(test_logic_scale_error test/test_logic_scale_error.cpp)

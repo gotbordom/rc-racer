@@ -9,6 +9,7 @@
 
 #include "state_estimation/pinned_hold.hpp"
 #include "state_estimation/slip_checks.hpp"
+#include "state_estimation/turn_speed.hpp"
 
 namespace state_estimation
 {
@@ -64,6 +65,12 @@ StateEstimationLogic::StateEstimationLogic(const StateEstimationConfig & config)
   require_positive(config.slip_braking_accel, "slip.braking_accel");
   require_positive(config.slip_braking_threshold, "slip.braking_threshold");
   require_positive(config.slip_correction_time, "slip.correction_time");
+  require_positive(config.slip_turn_min_yaw_rate, "slip.turn_min_yaw_rate");
+  require_positive(config.slip_turn_max_yaw_change, "slip.turn_max_yaw_change");
+  require_positive(config.slip_turn_stddev, "slip.turn_stddev");
+  if (!(config.slip_turn_relative_stddev >= 0.0)) {
+    throw std::invalid_argument("slip.turn_relative_stddev must be >= 0");
+  }
   require_positive(config.slip_lateral_threshold, "slip.lateral_threshold");
   require_positive(config.slip_lateral_min_yaw_rate, "slip.lateral_min_yaw_rate");
   require_positive(config.no_slip_lateral_speed_stddev, "no_slip.lateral_speed_stddev");
@@ -190,6 +197,23 @@ void StateEstimationLogic::predict(double dt)
   fusion_->update(
     state_, kSideSpeed, state_.mean(kYawRate) * frame_->rear_axle_offset(),
     no_slip_sigma * no_slip_sigma);
+  // In a slide, the turn measures the forward speed (turn_speed.hpp): the
+  // wheel is distrusted and the constraint loose, so nothing else does.
+  // The window means overlap from step to step, so each step counts as
+  // dt / slip_window of one measurement.
+  status_.turn_speed_used = false;
+  if (sliding_now) {
+    if (const auto from = imu_reference_speed(config_.slip_window)) {
+      if (const auto turn = turn_speed(
+          history_, *from, last_yaw_rate_,
+          {config_.slip_turn_min_yaw_rate, config_.slip_turn_max_yaw_change,
+            config_.slip_turn_stddev, config_.slip_turn_relative_stddev}))
+      {
+        fusion_->update(state_, kSpeed, turn->speed, turn->variance * config_.slip_window / dt);
+        status_.turn_speed_used = true;
+      }
+    }
+  }
   if (regripped) {
     // The constraint snapping tight again corrects v_y, and through its
     // correlation with the position (built while v_y drifted) moves the

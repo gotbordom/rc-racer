@@ -81,6 +81,23 @@ TEST(StateEstimationLogicTest, UndersteerIsDetected)
   EXPECT_GE(logic.status().slip_events, 1);
 }
 
+TEST(StateEstimationLogicTest, SlideMeasuresTheForwardSpeedFromTheTurn)
+{
+  // VAL-018 (2.5 step 2b): sliding wide at 2 rad/s, the body moves forward
+  // at 2.6 m/s while the driven wheel reads 3.0. Once understeer is flagged
+  // the wheel is distrusted and the forward speed comes from the turn
+  // (lateral acceleration / yaw rate), so it settles on the body's 2.6
+  // instead of staying where the wheel had taken it.
+  StateEstimationLogic logic;
+  for (int i = 0; i < 50; ++i) {
+    cycle(logic, imu_sample(0.0), 2.6);
+  }
+  ASSERT_FALSE(turn(logic, 2.6, 2.0, 0.3, 1.0));  // grip into the turn
+  EXPECT_TRUE(turn(logic, 2.6, 2.0, 0.02, 2.0, 3.0 / 2.6));
+  EXPECT_TRUE(logic.status().turn_speed_used);
+  EXPECT_NEAR(logic.state().mean(kSpeed), 2.6, 0.15);
+}
+
 TEST(StateEstimationLogicTest, BicycleFlagsYawRateTheSteeringCannotMake)
 {
   // Spinning in place at 1 rad/s: impossible for an Ackermann car, so it is

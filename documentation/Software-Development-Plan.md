@@ -31,10 +31,10 @@ This document outlines the software development plan for the RC Racer autonomous
 | Feature | Name | Element | Status |
 | --- | --- | --- | --- |
 | 2.1 | `state-estimation` | VEH.GNC.SE | 🔍 In validation: merged 2026-11-23 (PR #1); manual checks open: #2–#7 |
-| 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
+| 2.2 | `object-detection` | VEH.PER.OD | 🚧 In progress: orange cone and obstacle detection from the camera (spec: `documentation/components/object_detection.md`) |
 | 2.3 | `validation-scenarios` | TST | ✅ Done: merged 2026-11-24 (PR #10). Validation cases automated (§3.6); the bugs it found are fixed in 2.4 (#9, #14) or planned in 2.5 (#11) |
 | 2.4 | `slip-handling` | VEH.GNC.SE, TST (DEV-07) | ✅ Done: merged 2026-11-24 (PR #15). Sim IMU sees impacts; VAL-006, -017, -019 pass, VAL-004 restored; VAL-018 moves to 2.5 |
-| 2.5 | `lateral-velocity` | VEH.GNC.SE | 🚧 In progress: sideways velocity in the state with a no-slip pseudo-measurement relaxed in slides, to fix VAL-018 (#11; spec §6.1) |
+| 2.5 | `lateral-velocity` | VEH.GNC.SE | ✅ Done: merged 2026-11-27 (PR #16). Sideways velocity in the state, no-slip pseudo-measurement relaxed in slides, forward speed from the turn; VAL-018 error halved but still expected-fail (#11, spec Open Item 7) |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |

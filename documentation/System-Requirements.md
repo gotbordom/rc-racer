@@ -131,6 +131,19 @@ Written just in time, before each subsystem's components are designed.
 | REQ-GNC-006 | GNC shall report the covariance of every estimate it publishes. | Architecture Conventions | T, I | VEH.GNC |
 | REQ-GNC-007 | GNC shall select its motion model (bicycle or unicycle) from configuration, without code changes. | REQ-SYS-041 | T | VEH.GNC.SE |
 
+### 4.2 PER - Perception
+
+Written 2026-11-28 for feature 2.2 `object-detection` ([spec](object_detection)). Range and accuracy figures are placeholders until the owner sets them (TBD-006 to TBD-010).
+
+| ID | Requirement | Source | Ver. | Allocation |
+| --- | --- | --- | --- | --- |
+| REQ-PER-001 | PER shall detect an 18" orange traffic cone that is wholly in the camera's view at a range of up to **TBD-006** m, in at least **TBD-007** % of camera frames. | REQ-SYS-006, REQ-SYS-002 | T | VEH.PER.OD |
+| REQ-PER-002 | PER shall keep reporting a cone's bearing while the cone is partly out of view during the final approach, down to the range where the cone leaves the image. | REQ-SYS-004 | T | VEH.PER.OD |
+| REQ-PER-003 | PER shall report each detected cone's position relative to the vehicle (`base_link`), with a bearing error of at most **TBD-008** ° and a range error of at most **TBD-008** % of range (95 %), and with its covariance. | REQ-SYS-004, REQ-GNC-003 (landmark fixes, TBD-004), Architecture Conventions | T | VEH.PER.OD |
+| REQ-PER-004 | PER shall report no more than **TBD-009** false cone detections per minute of driving on a course with obstacles, people and vegetation in view. | REQ-SYS-002 | T | VEH.PER.OD |
+| REQ-PER-005 | PER shall publish detections for each processed frame at ≥ **TBD-010** Hz, no later than **TBD-010** ms after the frame's capture, on the vehicle computer (Jetson Nano). | REQ-SYS-004 | T, A | VEH.PER.OD |
+| REQ-PER-006 | PER shall detect static and dynamic obstacles in the vehicle's path. *(Scope pending: [spec](object_detection) Open Item 1)* | REQ-SYS-007, REQ-SYS-008 | T | VEH.PER |
+
 ---
 
 ## 5. Open Issues
@@ -149,4 +162,9 @@ Written just in time, before each subsystem's components are designed.
 | TBD-003 | REQ-GNC-002 | Allowed odometry drift. **Placeholder: 2 % (TBR)**, accepted 2026-11-22 for merging 2.1 | **Where 2 % came from:** an engineering guess, not derived from the mission: the sim L2 test measures 0.37 % over ~100 m at `tire_mu` 0.5 (0.13 % at 1.0), plus margin for real tyres, terrain and calibration (1 % scale error assumed). It is in line with published fused wheel + IMU dead reckoning outdoors (about 1.8–2.4 % of distance). **How it will be set:** from the mission. Drift between camera fixes must keep the next cone inside the window where the camera can still find it, so the limit is about (cone search window) ÷ (longest leg between fixes). For example, ±2 m over a 100 m leg gives 2 %. Set it once 2.2 `object-detection` measures the camera's cone-detection range (with TBD-004), and confirm on hardware (Phase 5) |
 | TBD-004 | REQ-GNC-003 | Required global position accuracy | No GNSS (ISSUE-001): set from dead-reckoning drift (TBD-003) over the course length (REQ-SYS-005) and the camera's landmark detection range |
 | TBD-005 | REQ-GNC-004 | Longest GNSS outage to ride through | Deferred with REQ-GNC-004 until a GNSS receiver is added (ISSUE-001) |
+| TBD-006 | REQ-PER-001 | Cone detection range. **Proposed 10 m**: dead-reckoning drift of 2 % (TBD-003) over a 300 m leg is 6 m, so the cone must be found from further than that; in the sim camera a cone 10 m away is 25 px tall | Owner; check against the real lens's resolution |
+| TBD-007 | REQ-PER-001 | Share of frames a visible cone must be detected in. **Proposed 90 %** | Measured in sim, then on recorded real footage |
+| TBD-008 | REQ-PER-003 | Bearing and range accuracy. **Proposed 2 ° and 10 %**: at 10 m, 10 % is one pixel of cone height in the sim camera, and the approach needs the bearing more than the range | Measured in sim against the course file |
+| TBD-009 | REQ-PER-004 | Allowed false detections. **Proposed 1 per minute** | Measured on the sim course, then real footage |
+| TBD-010 | REQ-PER-005 | Detection rate and latency. **Proposed 10 Hz, 100 ms**: at the 0.3 m/s approach speed, 100 ms is 3 cm | Timed on the Jetson Nano |
 | TBR-001 | REQ-SYS-034 | Battery energy margin (proposed 30%) | Battery stress test |

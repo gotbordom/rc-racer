@@ -46,6 +46,16 @@ Phase 1 was completed before features were numbered. Its branch, `feature/simula
 
 **Branch names.** A feature branch is named `feature/<phase>.<feature>-<name>`, using the number and name from the table, e.g. `feature/2.1-state-estimation`. Merged feature branches are kept for later review.
 
+**Commits.** Keep commits small: one change each, so any one can be reviewed, reverted or bisected on its own.
+
+**Decisions go in the commit message.** Whenever a commit carries a choice between approaches (a design, a fix, how to record a finding, a requirement restated), its message records:
+1. **the problem**, with the evidence (numbers from the run, the trace);
+2. **the options** that were considered, including the rejected ones and why;
+3. **which was chosen, by whom and when**, e.g. "owner, 2026-11-24";
+4. **the result**, measured, or "next commit" when it comes later.
+
+Use the headings *The problem*, *The decision*, *Changes* or *Result*, as in VAL-005/017 (f3d6090), the slip-check redesign (887d4ce) or the turn measurement (fb16ee4). `git log --grep="The decision"` then lists every choice made in the project, with its reasons. A choice in a spec or the register points to the commit that records it.
+
 ### 1.2 Package Structure
 
 ```

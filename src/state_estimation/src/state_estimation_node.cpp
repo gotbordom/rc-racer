@@ -67,9 +67,15 @@ void StateEstimationNode::declare_parameters()
   declare_parameter("slip.braking_accel", d.slip_braking_accel);
   declare_parameter("slip.braking_threshold", d.slip_braking_threshold);
   declare_parameter("slip.correction_time", d.slip_correction_time);
+  declare_parameter("slip.turn_min_yaw_rate", d.slip_turn_min_yaw_rate);
+  declare_parameter("slip.turn_max_yaw_change", d.slip_turn_max_yaw_change);
+  declare_parameter("slip.turn_stddev", d.slip_turn_stddev);
+  declare_parameter("slip.turn_relative_stddev", d.slip_turn_relative_stddev);
   declare_parameter("slip.lateral_threshold", d.slip_lateral_threshold);
   declare_parameter("slip.lateral_min_yaw_rate", d.slip_lateral_min_yaw_rate);
   declare_parameter("slip.accel_span", d.slip_accel_span);
+  declare_parameter("no_slip.lateral_speed_stddev", d.no_slip_lateral_speed_stddev);
+  declare_parameter("no_slip.slide_lateral_speed_stddev", d.no_slip_slide_lateral_speed_stddev);
   declare_parameter("slip.accel_margin", d.slip_accel_margin);
   declare_parameter("slip.accel_gain", d.slip_accel_gain);
   declare_parameter("slip.impact_accel", d.slip_impact_accel);
@@ -109,9 +115,16 @@ StateEstimationConfig StateEstimationNode::read_config()
   c.slip_braking_accel = get_parameter("slip.braking_accel").as_double();
   c.slip_braking_threshold = get_parameter("slip.braking_threshold").as_double();
   c.slip_correction_time = get_parameter("slip.correction_time").as_double();
+  c.slip_turn_min_yaw_rate = get_parameter("slip.turn_min_yaw_rate").as_double();
+  c.slip_turn_max_yaw_change = get_parameter("slip.turn_max_yaw_change").as_double();
+  c.slip_turn_stddev = get_parameter("slip.turn_stddev").as_double();
+  c.slip_turn_relative_stddev = get_parameter("slip.turn_relative_stddev").as_double();
   c.slip_lateral_threshold = get_parameter("slip.lateral_threshold").as_double();
   c.slip_lateral_min_yaw_rate = get_parameter("slip.lateral_min_yaw_rate").as_double();
   c.slip_accel_span = get_parameter("slip.accel_span").as_double();
+  c.no_slip_lateral_speed_stddev = get_parameter("no_slip.lateral_speed_stddev").as_double();
+  c.no_slip_slide_lateral_speed_stddev =
+    get_parameter("no_slip.slide_lateral_speed_stddev").as_double();
   c.slip_accel_margin = get_parameter("slip.accel_margin").as_double();
   c.slip_accel_gain = get_parameter("slip.accel_gain").as_double();
   c.slip_impact_accel = get_parameter("slip.impact_accel").as_double();
@@ -336,6 +349,8 @@ void StateEstimationNode::report_health(diagnostic_updater::DiagnosticStatusWrap
   stat.add("stale_history_rebases", s.stale_history_rebases);
   stat.add("understeer_detected", s.understeer_detected);
   stat.add("pinned", s.pinned);
+  stat.add("side_slip_free", s.side_slip_free);
+  stat.add("turn_speed_used", s.turn_speed_used);
   stat.add("covariance_trace", logic_->estimate().covariance.trace());
   stat.add("numerical_resets", s.numerical_resets);
   stat.add("rejected_measurements", s.rejected_measurements);

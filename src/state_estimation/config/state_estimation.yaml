@@ -27,6 +27,9 @@ state_estimation:
       accel_no_imu: 4.0             # (m/s^2)^2/s when the IMU is stale (TBD)
       yaw_accel: 1.0                # (rad/s^2)^2/s (TBD)
       distance: 1.0e-3              # m^2/m along-track, varying wheel scale / scrub (TBD)
+    no_slip:
+      lateral_speed_stddev: 0.02      # m/s: rear axle sideways motion allowed while gripping (TBD)
+      slide_lateral_speed_stddev: 0.5 # m/s: the same in a slide, loose so v_y follows the IMU (TBD)
     slip:
       threshold: 0.3                # m/s, on top of 3 sigma of predicted speed (TBD)
       yaw_rate_margin: 0.2          # rad/s beyond the steering limit (TBD)
@@ -41,6 +44,10 @@ state_estimation:
       braking_accel: 0.5              # m/s^2: wheel behind the IMU counts as slip only when braking (TBD)
       braking_threshold: 0.15         # m/s: tighter window threshold for that case, a braking slide (TBD)
       correction_time: 0.5            # s: a retroactive slip correction is spread over this (TBD)
+      turn_min_yaw_rate: 1.0          # rad/s: in a slide, speed from the turn only while turning this hard (TBD)
+      turn_max_yaw_change: 0.5        # rad/s: ... and this steady over the window (TBD)
+      turn_stddev: 0.1                # m/s: its 1 sigma, plus ... (TBD)
+      turn_relative_stddev: 0.05      # ... this share of the speed (TBD)
       lateral_threshold: 0.5          # m/s^2: lateral accel short of wheel speed x yaw rate = understeer (TBD)
       lateral_min_yaw_rate: 0.3       # rad/s: understeer is checked only when turning faster (TBD)
       accel_span: 0.2                 # s: wheel vs IMU acceleration compared over this (TBD)

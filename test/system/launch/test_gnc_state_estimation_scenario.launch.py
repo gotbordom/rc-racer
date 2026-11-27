@@ -60,9 +60,9 @@ DIAGNOSTICS_LAG_S = 1.5 * DIAGNOSTICS_PERIOD_S
 MAX_JUMP = 0.05
 DEFAULT_WORLD = 'empty_course.world'
 # Simulation plumbing that sometimes dies at shutdown (#12): Gazebo hangs and
-# is killed (-9), the ROS-Gazebo bridge segfaults (-11). Test infrastructure,
-# not the system under test.
-SHUTDOWN_TOLERATED = {'ign': {-9}, 'parameter_bridge': {-11}}
+# is killed (-9), the ROS-Gazebo bridge and the sensor adapter segfault (-11).
+# Test infrastructure, not the system under test.
+SHUTDOWN_TOLERATED = {'ign': {-9}, 'parameter_bridge': {-11}, 'sensor_adapter_node': {-11}}
 STEP_KEYS = {
     'duration', 'speed', 'speed_end', 'steer', 'expect_slip', 'expect_slip_within',
     'expect_slip_after_gap', 'min_consistent_fraction',

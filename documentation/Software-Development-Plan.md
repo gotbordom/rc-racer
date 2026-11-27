@@ -34,7 +34,7 @@ This document outlines the software development plan for the RC Racer autonomous
 | 2.2 | `object-detection` | VEH.PER.OD | ⏳ Planned |
 | 2.3 | `validation-scenarios` | TST | ✅ Done: merged 2026-11-24 (PR #10). Validation cases automated (§3.6); the bugs it found are fixed in 2.4 (#9, #14) or planned in 2.5 (#11) |
 | 2.4 | `slip-handling` | VEH.GNC.SE, TST (DEV-07) | ✅ Done: merged 2026-11-24 (PR #15). Sim IMU sees impacts; VAL-006, -017, -019 pass, VAL-004 restored; VAL-018 moves to 2.5 |
-| 2.5 | `lateral-velocity` | VEH.GNC.SE | ⏳ Planned: sideways velocity in the state with a no-slip pseudo-measurement relaxed in slides, to fix VAL-018 (#11; spec §6.1) |
+| 2.5 | `lateral-velocity` | VEH.GNC.SE | 🚧 In progress: sideways velocity in the state with a no-slip pseudo-measurement relaxed in slides, to fix VAL-018 (#11; spec §6.1) |
 | 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |
@@ -45,6 +45,16 @@ This document outlines the software development plan for the RC Racer autonomous
 Phase 1 was completed before features were numbered. Its branch, `feature/simulation`, keeps its name. Phase 5 features will be numbered when Phase 5 is planned in detail.
 
 **Branch names.** A feature branch is named `feature/<phase>.<feature>-<name>`, using the number and name from the table, e.g. `feature/2.1-state-estimation`. Merged feature branches are kept for later review.
+
+**Commits.** Keep commits small: one change each, so any one can be reviewed, reverted or bisected on its own.
+
+**Decisions go in the commit message.** Whenever a commit carries a choice between approaches (a design, a fix, how to record a finding, a requirement restated), its message records:
+1. **the problem**, with the evidence (numbers from the run, the trace);
+2. **the options** that were considered, including the rejected ones and why;
+3. **which was chosen, by whom and when**, e.g. "owner, 2026-11-24";
+4. **the result**, measured, or "next commit" when it comes later.
+
+Use the headings *The problem*, *The decision*, *Changes* or *Result*, as in VAL-005/017 (f3d6090), the slip-check redesign (887d4ce) or the turn measurement (fb16ee4). `git log --grep="The decision"` then lists every choice made in the project, with its reasons. A choice in a spec or the register points to the commit that records it.
 
 ### 1.2 Package Structure
 
@@ -567,7 +577,7 @@ Hands-on checks in the sim (driving by hand, §5.6) find problems that the plann
 | VAL-015 | RViz: frames and the `/odom` arrow follow the car, ellipse drawn flat | Manual pass 2026-11-17 | - | #1 | Manual | - | ✅ |
 | VAL-016 | Drive forward, then straight back: the covariance ellipse shrinks for a while. Expected from the scale-error term (it scales with distance from the odom origin) if the scale error is the same both ways; check the true error shrinks too, or the covariance is overconfident on the way back | Owner, manual 2026-11-22 (#8). Unit tests 2026-11-23: hypothesis confirmed; the true error shrinks with it, and a scale that differs in reverse stays inside 3σ. Scenario 2026-11-23: variance 12.9 % lower 5.0 m from the start, as predicted, 100 % inside 3σ | REQ-GNC-006 | #1, #10 | Unit ✅ (`OutAndBackCovarianceShrinksThenGrows`, `OutAndBackScaleErrorCancelsAsTheCovarianceSays`, `OutAndBackDifferentScaleInReverseIsCovered`); scenario ✅ (`val016_out_and_back`) | ✅ | - |
 | VAL-017 | Launch slip at μ 0.5: the covariance stays honest while the slip develops, before it is detected | Found 2026-11-23 by the VAL-005 scenario: overconfident until detection, ~0.1 m error at ~0.02 m sigma, ~15 % of the first second outside 3σ. **Fixed 2026-11-24 (2.4, #9):** on detection the position is moved back by what the wheel added over the window (spread over 0.5 s), the covariance grows by the correction's uncertainty; before detection the wheel is distrusted in proportion to its acceleration mismatch: 100 % inside | REQ-GNC-006 | #10, 2.4 | Unit ✅ (`CaughtLaunchSlipCorrectsThePositionBack`); scenario ✅ (`val017_launch_slip_covariance`) | ✅ | - |
-| VAL-018 | Full-lock turbo slide at μ 0.5: the estimate and covariance stay honest, with no position steps | Found 2026-11-23 by the VAL-004 scenario: **1.1-1.76 m error at σ ≤ 0.24 m** (24-56 % inside 3σ); no sideways-velocity state, slide caught 2-3 s late, the IMU fallback runs away, a ~7 cm step when slip ends (spec Open Item 7, #11) | REQ-GNC-002, -005, -006 | #10 | Scenario (`val018_sideways_slide_honest`, expected-fail) | ❌ | - |
+| VAL-018 | Full-lock turbo slide at μ 0.5: the estimate and covariance stay honest, with no position steps | Found 2026-11-23 by the VAL-004 scenario: **1.1-1.76 m error at σ ≤ 0.24 m** (24-56 % inside 3σ); no sideways-velocity state, slide caught 2-3 s late, the IMU fallback runs away, a ~7 cm step when slip ends (spec Open Item 7, #11) **2.5 (2026-11-27):** sideways velocity in the state, the no-slip constraint relaxed in a slide, forward speed from the turn: 0.72-0.94 m, 58-91 % inside 3σ (five runs), no steps. Still expected-fail: the slide isn't steady; needs a tyre model or a velocity sensor (spec Open Item 7, #11) | REQ-GNC-002, -005, -006 | #10, 2.5 | Scenario (`val018_sideways_slide_honest`, expected-fail) | ❌ | - |
 | VAL-019 | Pinned against an obstacle with the wheels spinning: the estimate stops with the car | Found 2026-11-24 by the VAL-007 scenario: drove on at wheel speed, 4.3 m past the bench after 4 s at σ 0.5 m; the sim IMU missed the impact (DEV-07). **Fixed 2026-11-24 (2.4, #14):** the sim IMU sees the impact (DEV-07 fix); after an impact that took ≥ 30 % of the speed, with the wheel unchanged and the IMU quiet, the car is held pinned and the distance since the impact is taken back: final error 0.10-0.26 m on three runs | REQ-GNC-005, -006 | #10, 2.4 | Unit ✅ (`PinnedCarEstimateStopsWithIt`, `ImpactThatLeavesSomeSpeedStillPins`, `ImpactTheImuOnlyPartlySawStillPins`, `PinnedCarThatDrivesAwayIsFollowed`, `BumpIsNotAPinnedStop`); scenario ✅ (`val019_pinned_estimate_stops`) | ✅ | - |
 
 ---

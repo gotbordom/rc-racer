@@ -126,6 +126,7 @@ nav_msgs::msg::Odometry to_odometry(
   odom.pose.pose.position.y = state.mean(kY);
   set_quaternion_from_yaw(state.mean(kYaw), odom.pose.pose.orientation);
   odom.twist.twist.linear.x = state.mean(kSpeed);
+  odom.twist.twist.linear.y = state.mean(kSideSpeed);
   odom.twist.twist.angular.z = state.mean(kYawRate);
 
   const StateMatrix & p = state.covariance;
@@ -141,13 +142,14 @@ nav_msgs::msg::Odometry to_odometry(
   }
 
   auto & twist_cov = odom.twist.covariance;
-  const std::array<std::pair<int, int>, 2> twist_map{{{kLinX, kSpeed}, {kRotZ, kYawRate}}};
+  const std::array<std::pair<int, int>, 3> twist_map{
+    {{kLinX, kSpeed}, {kLinY, kSideSpeed}, {kRotZ, kYawRate}}};
   for (const auto & [row_msg, row_state] : twist_map) {
     for (const auto & [col_msg, col_state] : twist_map) {
       twist_cov[row_msg * 6 + col_msg] = p(row_state, col_state);
     }
   }
-  for (int i : {kLinY, kLinZ, kRotX, kRotY}) {
+  for (int i : {kLinZ, kRotX, kRotY}) {
     twist_cov[i * 6 + i] = kUnestimatedVariance;
   }
   return odom;

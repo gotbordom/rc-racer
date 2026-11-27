@@ -11,15 +11,17 @@
 #ifndef STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 #define STATE_ESTIMATION__STATE_ESTIMATION_LOGIC_HPP_
 
-#include <deque>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "state_estimation/pinned_hold.hpp"
 #include "state_estimation/robot_frame.hpp"
 #include "state_estimation/robot_state.hpp"
 #include "state_estimation/sensor_fusion_method.hpp"
+#include "state_estimation/speed_history.hpp"
+#include "state_estimation/spread_correction.hpp"
 
 namespace state_estimation
 {
@@ -135,6 +137,14 @@ struct StateEstimationConfig
   /// s. The retroactive correction is applied over this long, so odom stays
   /// continuous. TBD.
   double slip_correction_time{0.5};
+  /// In a slide, the forward speed from the turn (turn_speed.hpp): only while
+  /// turning at least slip_turn_min_yaw_rate (rad/s), with the yaw rate
+  /// changing less than slip_turn_max_yaw_change (rad/s) over the window;
+  /// 1-sigma slip_turn_stddev (m/s) + slip_turn_relative_stddev x speed. TBD.
+  double slip_turn_min_yaw_rate{1.0};
+  double slip_turn_max_yaw_change{0.5};
+  double slip_turn_stddev{0.1};
+  double slip_turn_relative_stddev{0.05};
   /// m/s^2. Understeer (a slide the yaw-rate check cannot see, VAL-004):
   /// over slip_window, the measured lateral acceleration falls short of the
   /// wheel speed x yaw rate by more than this. Checked only while turning
@@ -148,6 +158,13 @@ struct StateEstimationConfig
   /// that mismatch could have built (s). A developing spin is distrusted
   /// gradually instead of followed until the hard decision. TBD.
   double slip_accel_span{0.2};
+  /// m/s. The no-slip constraint's 1 sigma: how far the rear axle may move
+  /// sideways while gripping (spec §6.1). Tight, so the filter matches the
+  /// kinematic bicycle model. TBD.
+  double no_slip_lateral_speed_stddev{0.02};
+  /// m/s. Its 1 sigma during a slide (understeer or yaw-rate slip): loose,
+  /// so v_y follows the IMU's lateral acceleration (VAL-018). TBD.
+  double no_slip_slide_lateral_speed_stddev{0.5};
   double slip_accel_margin{0.6};
   double slip_accel_gain{0.5};
   /// Impact (VAL-019): a deceleration beyond slip_impact_accel (m/s^2, far
@@ -195,6 +212,10 @@ struct StateEstimationStatus
   bool understeer_detected{false};
   /// Pinned against an obstacle after an impact (see slip_impact_accel).
   bool pinned{false};
+  /// The no-slip constraint is relaxed: a slide, v_y follows the IMU.
+  bool side_slip_free{false};
+  /// The forward speed was measured from the turn this step (a slide).
+  bool turn_speed_used{false};
   /// Variance used for the most recent wheel-speed update (inflated while
   /// slipping).
   double wheel_variance_used{0.0};
@@ -235,36 +256,21 @@ public:
   const StateEstimationConfig & config() const {return config_;}
 
 private:
-  /// The estimate from `age` ago (the newest history sample at least that
-  /// old) plus the IMU acceleration since, and the variance it had then;
-  /// unset until that much fresh IMU history exists.
-  struct ReferenceSpeed
-  {
-    double speed;
-    double variance;
-    std::size_t index;  ///< of the history sample it starts from
-  };
+  /// history_.reference(age), but only with fresh IMU: without it the
+  /// acceleration input is 0 and every real speed change would look like
+  /// slip.
   std::optional<ReferenceSpeed> imu_reference_speed(double age) const;
 
-  /// History older than sample `from` holds speeds the IMU path from it
-  /// contradicts (an earlier, undetected slip left them): rewrite them as
-  /// that sample's speed minus the IMU integral back to them.
-  void rebase_history_before(std::size_t from);
+  /// Restart the IMU-only speed from before an impact plus the IMU since;
+  /// returns the speed before it.
+  double restart_from_impact();
 
-  /// Restart the IMU-only speed from before an impact plus the IMU since.
-  void restart_from_impact();
-  /// On pinning: take back the distance driven since the impact.
-  void take_back_distance_since_impact();
-
-  /// Move the position by this step's share of a pending correction.
-  void apply_pending_correction(double dt);
-  Eigen::Vector2d pending_correction_{Eigen::Vector2d::Zero()};  ///< m, still to apply
-  double correction_time_left_{0.0};
-  bool after_impact_{false};             ///< this slip started with or saw an impact
-  double speed_before_impact_{0.0};      ///< m/s, the IMU path's start
-  double impact_time_{0.0};              ///< s (elapsed_), of the impact step
-  std::optional<double> pinned_since_;   ///< when it last became pinned
-  double pinned_accel_integral_{0.0};    ///< accel_integral_ when pinned
+  /// Undo the position change since `before` and spread it instead.
+  void spread_since(const Eigen::Vector2d & before);
+  bool slide_in_slip_{false};            ///< this slip included a slide
+  double impact_time_{0.0};              ///< s (history_.elapsed()), of the impact step
+  /// Pinned against an obstacle after an impact (pinned_hold.hpp).
+  PinnedHold hold_;
 
   /// A slip caught by the windowed check: the estimate followed the wheel
   /// since the window start, the last speed trusted. Rewrite the history as
@@ -300,32 +306,18 @@ private:
   double lateral_sum_{0.0};
   int lateral_samples_{0};
   double predict_lateral_{0.0};
-  double lateral_integral_{0.0};
-  double centripetal_integral_{0.0};
   double last_wheel_speed_{0.0};
   double imu_lever_{0.0};               ///< m, rear axle to IMU, from the last sample
   bool lateral_available_{false};       ///< the last IMU sample gave lateral force
 
-  /// For the windowed slip check: per predict step, the time, the speed
-  /// estimate and the running integral of the acceleration input.
-  struct SpeedSample
-  {
-    double time;
-    double speed;
-    double speed_variance;
-    double accel_integral;
-    double lateral_integral;      ///< of the measured lateral acceleration
-    double centripetal_integral;  ///< of wheel speed x yaw rate
-    double yaw_rate;              ///< IMU, at this sample
-    double wheel_speed;           ///< the last wheel reading, at this sample
-  };
-  std::deque<SpeedSample> speed_history_;
+  /// The recent past the slip checks look back over (speed_history.hpp).
+  SpeedHistory history_;
+  /// Position corrections applied over time (spread_correction.hpp).
+  SpreadCorrection spread_;
   /// While slipping: since when the wheel has agreed again (hysteresis).
   std::optional<double> agreeing_since_;
-  double slip_since_{0.0};       ///< elapsed_ when the current slip started
+  double slip_since_{0.0};       ///< history_.elapsed() when the current slip started
   double last_yaw_rate_{0.0};    ///< rad/s, from the last IMU sample
-  double elapsed_{0.0};
-  double accel_integral_{0.0};
 };
 
 }  // namespace state_estimation

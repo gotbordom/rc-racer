@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Anthony Tracy
 // SPDX-License-Identifier: MIT
 
-// Filter state for VEH.GNC.SE (spec §4): 2D pose in odom plus forward speed
-// and yaw rate, with full covariance. Pure C++, no ROS.
+// Filter state for VEH.GNC.SE (spec §4): 2D pose in odom plus the body's
+// forward and sideways speed and yaw rate, with full covariance. Pure C++,
+// no ROS.
 
 #ifndef STATE_ESTIMATION__ROBOT_STATE_HPP_
 #define STATE_ESTIMATION__ROBOT_STATE_HPP_
@@ -20,9 +21,12 @@ enum StateIndex : int
   kX = 0,      ///< m, odom
   kY = 1,      ///< m, odom
   kYaw = 2,    ///< rad, odom, normalised to [-pi, pi)
-  kSpeed = 3,  ///< forward speed v of base_footprint, m/s
+  kSpeed = 3,  ///< forward speed v_x of base_footprint, body frame, m/s
   kYawRate = 4,  ///< yaw rate omega, rad/s
-  kStateSize = 5,
+  /// Sideways (left) speed v_y of base_footprint, body frame, m/s. Without
+  /// slip it is omega x the rear axle offset (spec §6.1, feature 2.5).
+  kSideSpeed = 5,
+  kStateSize = 6,
 };
 
 using StateVector = Eigen::Matrix<double, kStateSize, 1>;

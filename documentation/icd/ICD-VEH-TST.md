@@ -16,7 +16,7 @@ REQ-SYS-040, REQ-TST-001 … REQ-TST-004.
 | Vehicle ICD | Simulator implements | In place of |
 | --- | --- | --- |
 | [ICD-SNS-GNC](ICD-SNS-GNC) | Provider side: `/imu`, `/navsat`, `/wheel/odom`, published by the **sensor adapter** (noise + covariance from `config/sensor_noise.yaml`) | `imu_driver`, `gps_driver`, `encoder_driver` |
-| ICD-SNS-PER (not started) | Provider side: `/camera`, `/camera_info` | `camera_driver` |
+| [ICD-SNS-PER](ICD-SNS-PER) | Provider side: `/camera`, `/camera_info` (Gazebo camera via the bridge, no noise) | `camera_driver` |
 | [ICD-GNC-ACT](ICD-GNC-ACT) | Consumer side: `/cmd_vel` → Ackermann drive | `motor_controller` + ESC + servo |
 
 Vehicle software must not use anything from §4 below, so that the same code runs on hardware.
@@ -47,6 +47,7 @@ Places where the simulator does not yet meet the ICDs it implements. Each is a t
 | DEV-05 | SNS-GNC-03 | `/wheel/odom` also provides yaw rate and pose (more than hardware can) | None if consumers follow ICD-SNS-GNC §4 | Allowed; consumers must use only `linear.x`. Their variance is reported as 1e6 (unmeasured) |
 | DEV-06 | (all) | Gazebo occasionally hangs on shutdown: ignores SIGINT and SIGTERM and is SIGKILLed (seen 1 in ~8 local runs on 2026-11-16; again 2026-11-17 in `test_course_world`, which passed on re-run) | Intermittent `test_exit_codes` failure; no effect on sensor data | Investigate (backtrace of the hung process). The exit-code check stays strict |
 | DEV-07 | SNS-GNC-01 | The IMU samples acceleration at single instants (100 Hz), so it misses **contact impulses**: hitting the bench at 1 m/s lost 0.92 m/s, but even `/sim/truth/imu` showed one −2.1 m/s² sample, about 0.04 m/s in total (seen 2026-11-17) | `state_estimation` cannot detect slip in a crash: wheels spinning on against the obstacle look like driving, and the estimate drives on until the wheels stop: ~0.6 m in a brief crash (2026-11-17), **~1 m per second of pushing** while pinned (4.3 m after 4 s, VAL-019, 2026-11-24). No slip is flagged while pinned, so the slip safety nets do not bound it; only stopping the wheels does. A real accelerometer measures continuously and sees most of the impulse (unless it saturates) | ✅ **Fixed 2026-11-24** (2.4): the sensor adapter derives the IMU's acceleration from the true body motion (`/sim/truth/body_odom`, 100 Hz), as an ideal accelerometer reads it: a contact impulse now shows in full. In normal driving it matches Gazebo's own to ~0.02 m/s². `imu.acceleration_from_truth: false` restores the old behaviour |
+| DEV-08 | SNS-PER-01, -02 | The sim camera is an **ideal pinhole**: 640 × 480, 60° horizontal field of view, no lens distortion, no noise, no motion blur or exposure changes. The real IMX219 lenses are 200° (in use) and 105° low-distortion (in testing). Detection tuned in the sim (colour thresholds, ranges) will need re-checking on real footage. Open: match the sim to the chosen lens ([object_detection](object_detection) Open Item 4) |
 
 ## 6. Verification
 

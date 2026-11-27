@@ -159,8 +159,8 @@ Drawn in each subsystem's design when its components are designed. GNC (planned)
 | ICD-VEH-GND | L1 | Vehicle ↔ Ground | Not started | Ground segment (placeholder) |
 | [ICD-SNS-GNC](ICD-SNS-GNC) | L2 | Sensing → GNC | Draft | `state_estimation` |
 | [ICD-GNC-ACT](ICD-GNC-ACT) | L2 | GNC → Actuation | Draft | `planning_control`, `motor_controller` |
-| ICD-SNS-PER | L2 | Sensing → Perception | Not started | `object_detection` |
-| ICD-PER-GNC | L2 | Perception → GNC | Not started | `mapping`, cone approach |
+| [ICD-SNS-PER](ICD-SNS-PER) | L2 | Sensing → Perception | Draft | `object_detection` |
+| [ICD-PER-GNC](ICD-PER-GNC) | L2 | Perception → GNC | Draft | `localization`, `mapping`, cone approach |
 | ICD-EXE-GNC | L2 | Executive ↔ GNC | Not started | `mission_executive` (see [Mission Orchestration](Mission-Orchestration)) |
 | ICD-PER-EXE | L2 | Perception ↔ Executive | Not started | `mission_executive` |
 | ICD-FDR-ACT | L2 | Safety → Actuation | Not started | `safety` |

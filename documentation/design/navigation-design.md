@@ -288,7 +288,7 @@ That is years of specialised work, which these packages have already done and te
 
 **Why RTAB-Map first:** one package covers the VO tier, the mapping run, localization against the saved map and the obstacle grid, it's released for Humble, and it's BSD-licensed like our MIT code. **Its risk:** its VO is less accurate than OpenVINS or ORB-SLAM3. A valid combination is OpenVINS for the VO tier with RTAB-Map for the map tier. The GPL packages are fine to run as separate nodes for our own use; distributing them inside the car's software would bring GPL obligations.
 
-**Decision:** pending the Nano benchmark (§9).
+**Decided (owner, 2026-11-28):** RTAB-Map first, confirmed by the Nano benchmark (§9).
 
 ---
 
@@ -328,7 +328,7 @@ That is years of specialised work, which these packages have already done and te
 | 1 | Camera route | A, B, C or 0 (§6.2) | **Decided (owner, 2026-11-28): stereo, B planned, open to C**; owner evaluates which to buy. Timing is configuration (§6.5) |
 | 2 | Compute | Stay on the Nano / move to an Orin Nano | **Decided: stay on the Nano**; benchmarks (§9) before any move to a new GPU |
 | 3 | Where depth lives | Sensing / its own Perception component | **Decided: Sensing**, like a lidar would be |
-| 4 | Front-end package | RTAB-Map / OpenVINS / ORB-SLAM3 / VINS-Fusion (§8.1) | Open: by the Nano benchmark; RTAB-Map recommended first |
+| 4 | Front-end package | RTAB-Map / OpenVINS / ORB-SLAM3 / VINS-Fusion (§8.1) | **Decided (owner, 2026-11-28): RTAB-Map first**, confirmed by the Nano benchmark (§9); OpenVINS for the VO tier with RTAB-Map for the map tier if RTAB-Map's VO falls short |
 | 5 | Fusion structure | Split back ends / one tightly coupled estimator | **Decided: split**; nothing tightly coupled unless it has to be. Modular gates in each fusion package (§12) |
 | 6 | Mapping run | Required / configurable | **Decided: configurable**, operation modes `mapping` / `operating` (§7) |
 | 7 | Monocular route | Fallback / main | **Decided: fallback only, a nice-to-have** after everything else |

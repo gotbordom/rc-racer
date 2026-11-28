@@ -36,7 +36,7 @@ This document outlines the software development plan for the RC Racer autonomous
 | 2.4 | `slip-handling` | VEH.GNC.SE, TST (DEV-07) | ✅ Done: merged 2026-11-24 (PR #15). Sim IMU sees impacts; VAL-006, -017, -019 pass, VAL-004 restored; VAL-018 moves to 2.5 |
 | 2.5 | `lateral-velocity` | VEH.GNC.SE | ✅ Done: merged 2026-11-27 (PR #16). Sideways velocity in the state, no-slip pseudo-measurement relaxed in slides, forward speed from the turn; VAL-018 error halved but still expected-fail (#11, spec Open Item 7) |
 | 3.0 | `navigation-design` | VEH.GNC, VEH.PER, VEH.SNS | 🚧 In progress: design before building: the localization tiers (dead reckoning, stereo or monocular visual odometry, SLAM against a mapping run) and the gates between them; stereo camera sync options; the specs for 3.1 and 3.2 (`documentation/design/navigation-design.md`) |
-| 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first) |
+| 3.1 | `localization` | VEH.GNC.LOC | ⏳ Planned (spec to be written first). Step 1: the source refactor of `state_estimation` (drivers and fusion sources separate, `fusion_gates`; navigation design §12), then VO, the landmark catalogue and the tiers |
 | 3.2 | `mapping` | VEH.GNC.MAP | ⏳ Planned |
 | 3.3 | `planning-control` | VEH.GNC.PLN | ⏳ Planned |
 | 4.1 | `sim-steering-lag` | TST (DEV-04) | ⏳ Planned |

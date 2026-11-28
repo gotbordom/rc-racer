@@ -333,7 +333,7 @@ That is years of specialised work, which these packages have already done and te
 | 6 | Mapping run | Required / configurable | **Decided: configurable**, operation modes `mapping` / `operating` (§7) |
 | 7 | Monocular route | Fallback / main | **Decided: fallback only, a nice-to-have** after everything else |
 | 8 | Roadmap | 3.0 → TST sim work → 3.1 `localization` (VO, catalogue) → 3.2 `mapping` → 2.2 detection | **Decided: as listed** |
-| 9 | Object detection scope | One package per object / one package for any object | Proposed: one package, any object (§13) |
+| 9 | Object detection scope | One package per object / one package for any object | **Decided (owner, 2026-11-28): one `object_detection` package with pluggable detectors**, classes as configuration (§13) |
 
 ---
 
@@ -353,6 +353,8 @@ Neither knows the other's internals. `localization` takes `/odom` as its motion 
 | **Gate** | A pure function: (measurement, state) → accept or reject, and why | `finite`, `innovation_chi2`, `slip_window`, `vo_quality`, `gyro_agreement`, `unambiguous_association` |
 | **Source monitor** | Hysteresis per source: active → suspect → lost → active, from its gate results | lost after 5 rejects in a row, back after 10 accepts |
 | **Filter core** | Predict and update; knows nothing about sources | today's `ExtendedKalmanFilter` |
+
+Sources come in **two kinds**: *measurements* (wheel, VO, fixes), fused in the update step, and *process inputs* (the IMU), which drive the predict step. The adapter interface has to allow both; a source can also be both (the IMU's yaw rate is also a measurement).
 
 The **gate library is shared** by both estimators (a small pure C++ package, e.g. `fusion_gates`), so `innovation_chi2` is written and tested once. Each estimator lists its sources in its configuration:
 

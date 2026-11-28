@@ -6,7 +6,7 @@ How the car knows where it is and what is around it: the tiers from dead reckoni
 
 The aim is a car that is **more robust than the competition strictly needs**: every tier degrades to the one below, down to the dead reckoning we already have.
 
-Nothing here is decided until the owner says so. Recommendations are marked, and §11 lists the open decisions.
+Owner decisions are marked **Decided (owner, date)**; everything else is a recommendation. §11 lists the decisions.
 
 ---
 
@@ -73,7 +73,7 @@ Every tier has an **entry gate**, an **exit gate** and **hysteresis**, so the ti
 
 ### 4.2 Landmark association gate (`localization`), per observation
 
-- **Semantic landmarks** (cones, survey points): match by class and position within 3σ, and the match must be **unambiguous**: the nearest candidate clearly closer than the second-nearest. When several are seen at once, joint compatibility (JCBB, §12) instead of one by one.
+- **Semantic landmarks** (cones, survey points): match by class and position within 3σ, and the match must be **unambiguous**: the nearest candidate clearly closer than the second-nearest. When several are seen at once, joint compatibility (JCBB, §14) instead of one by one.
 - **Visual landmarks** (run-1 features): place recognition (bag of words), then a geometric check on the inliers. Features of the run-1 map that are no longer seen are counted, so a changed scene is noticed.
 
 ### 4.3 Correction consistency gate (`localization`), per correction
@@ -84,7 +84,7 @@ Every tier has an **entry gate**, an **exit gate** and **hysteresis**, so the ti
 
 ### 4.4 Integrity gate (any tier to T0)
 
-The position uncertainty, against what the current **mission phase** needs: metres while driving between waypoints, centimetres in the final cone approach. A tier is "usable" only if its bound meets the phase's limit. This is the *protection level* idea from aviation GNSS integrity monitoring (§12).
+The position uncertainty, against what the current **mission phase** needs: metres while driving between waypoints, centimetres in the final cone approach. A tier is "usable" only if its bound meets the phase's limit. This is the *protection level* idea from aviation GNSS integrity monitoring (§14).
 
 ---
 
@@ -159,7 +159,7 @@ So sync is a requirement for stereo depth while turning, not a refinement.
 | C | **Integrated stereo depth camera** (e.g. OAK-D, RealSense) over USB | In hardware, inside the camera | Global on most models | Low: vendor ROS driver | **Depth is computed on the camera**, which takes the heaviest work off the Nano. Bulkier; fixed baseline; USB power and bandwidth |
 | 0 | *Baseline:* two free-running IMX219s, paired by timestamp | none | Rolling | none | Fine for monocular VO on one camera; poor for stereo depth while turning (§6.1). Measure the real offset on the bench (film a fast LED with both) |
 
-**Recommendation:** **C** if depth on the camera fits the budget and the mount, because it solves sync and the Nano's compute together. Otherwise **B**, for the best data and the camera-IMU timing. **A** as the low-cost step if the IMX219s stay.
+**Decided (owner, 2026-11-28): stereo, planned as B** (global shutter, hardware-synced), **open to C**. The owner evaluates which to buy. The design assumes time-synced images, and the sim provides them. Because the bought camera may turn out not to be synced or global shutter, **the camera's timing is configuration** (§6.5), not an assumption in the code.
 
 ### 6.3 Depth range
 
@@ -179,13 +179,36 @@ One camera, with depth from its own motion between frames, and the scale from th
 | | Stereo | Monocular motion stereo |
 | --- | --- | --- |
 | Hardware | Two synced cameras | One camera: no sync problem |
-| Scale | Direct, from the baseline | From the IMU or the wheel; **unobservable at constant velocity** for IMU-only, which the **wheel fixes** ("VINS on Wheels", §12) |
+| Scale | Direct, from the baseline | From the IMU or the wheel; **unobservable at constant velocity** for IMU-only, which the **wheel fixes** ("VINS on Wheels", §14) |
 | Depth ahead | Yes | **No: there is no parallax at the point you drive towards** (the focus of expansion), so an obstacle straight ahead is the hardest thing to see |
 | Depth while stopped | Yes | No |
 | Compute | Matching (or on the camera, option C) | Lighter for sparse VO; dense mono depth is heavy (REMODE), and learned mono depth (MiDaS, Depth Anything) needs the GPU and gives only relative depth |
 | VO quality | Good | Good with IMU + wheel |
 
-**Recommendation:** monocular VIO + wheel is a **sound VO tier (T2)** with one camera and no sync. But it is **weak for obstacles ahead**, which is what the local map needs. So: mono for VO if stereo is delayed, stereo (C or B) for depth.
+**Decided (owner, 2026-11-28): fallback only, and a nice-to-have** built after everything else. Monocular VIO + wheel is a sound VO tier with one camera, but weak for obstacles ahead, which is what the local map needs.
+
+### 6.5 Camera timing is configuration
+
+The bought camera may not be global shutter or hardware-synced, so the pipeline reads its timing from the robot's configuration:
+
+```yaml
+stereo:
+  sync: hardware            # hardware | software
+  max_pair_offset: 0.0005   # s: worst offset between left and right exposures (measured, §9)
+  shutter: global           # global | rolling
+  readout_time: 0.0         # s: top-to-bottom row time for rolling shutter (~0.02 for an IMX219)
+  time_offset_imu: 0.0      # s: camera-IMU offset, from Kalibr (§8)
+```
+
+Mostly this **changes how the error is calculated**, as the owner expected:
+- **Pair offset:** the depth and VO covariance gains a motion term, roughly the speed and yaw rate times `max_pair_offset`. With hardware sync it is negligible.
+- **Rolling shutter:** each row has its own time, so the motion during `readout_time` is another covariance term, unless the front end models it.
+
+It also changes **two gates**, not only the error:
+- with software sync, **stereo depth is not used while turning faster than a limit**, because at 2 rad/s the false disparity (§6.1) is larger than any honest covariance;
+- with rolling shutter, VO is gated harder over bumps, where the skew is worst.
+
+The sim uses `hardware` / `global`; the other settings are tested by faking the offset and skew in the sim's camera adapter (§9).
 
 ---
 
@@ -200,8 +223,21 @@ One camera, with depth from its own motion between frames, and the scale from th
 | Cones | Confirmed and refined against the course file | Fixes, as checks |
 | Fallback | T2 → T1 | T3 → T2 → T1 |
 
-**Proposed requirement** (for System Requirements, TBR until checked against the event's rules):
-> REQ-SYS-0xx: The system shall be able to use its first attempt on a course to build a map, and use that map to localize during later attempts on the same course.
+**Decided (owner, 2026-11-28): the mapping run is not required, it is configurable.** Some competitions won't allow it, so the robot has **operation modes** chosen in its configuration, which the mission's decision tree (Mission Orchestration) builds on later:
+
+| Mode | What runs | Top tier |
+| --- | --- | --- |
+| `mapping` | SLAM builds and saves the map; slow mission profile | T2 (T3 isn't available while building) |
+| `operating` | Localizes against a saved map **if one is configured**, else without | T3 with a map, T2 without |
+
+```yaml
+operation:
+  mode: operating           # mapping | operating
+  map: maps/practice_course_run1.db   # optional: absent = no map, top tier T2
+```
+
+**Proposed requirement** (System Requirements):
+> REQ-SYS-0xx: The system shall support a mapping mode, which builds and saves a course map, and an operating mode, which uses a saved map when one is configured and operates without one otherwise, selected by configuration.
 
 ---
 
@@ -225,11 +261,34 @@ One camera, with depth from its own motion between frames, and the scale from th
 | Association, fixes, tiers, gates (§3–4) | **Write** | `localization` (3.1) | Publishes `map` → `odom` and the tier status |
 | Local obstacle map | **Use** | `nav2_costmap_2d` with `spatio_temporal_voxel_layer` (Humble) | From the stereo point cloud; a terrain layer is written later if needed (gullies, REQ-SYS-010) |
 | Saved obstacle map (run 1) | **Use / write** | RTAB-Map's map output (occupancy grid) + a small saver/loader | |
-| Cone detection | **Write** | `object_detection` (2.2) | As specced; resumes with numbers from this design |
+| Object detection (§13) | **Write** the package and the `colour_shape` plugin; **use** a learned model | `object_detection` (2.2) with `pluginlib` detectors; a YOLO-family model on TensorRT for the `learned` plugin | One package for any labelled object; cones are a configured class |
+| Shared gate library (§12) | **Write** | `fusion_gates` (new, pure C++) | Used by `state_estimation` and `localization` |
+| Operation modes (§7) | **Write** | robot configuration YAML (`mapping` / `operating`), read by `localization` and the SLAM launch | Later driven by the mission's decision tree |
 | Tier status message | **Write** | `rc_racer_msgs` (new): `LocalizationStatus` | tier, uncertainty, active sources, gate counters |
 | Sim stereo pair, textured world | **Write** | `rc_racer_simulation` | Second camera in the URDF; textured terrain, scattered features |
 | Fault injection for the gates | **Write** | `sensor_adapter_node` (extended), camera fault node | Black or frozen frames, featureless stretches, delays |
-| Monocular fallback (§6.4) | **Evaluate** | OpenVINS (mono) or ORB-SLAM3 (mono-inertial) | Only if stereo is delayed |
+| Monocular fallback (§6.4) | **Evaluate**, later | OpenVINS (mono) or ORB-SLAM3 (mono-inertial) | Nice-to-have, after everything else (Decision 7) |
+
+### 8.1 The visual front-end candidates, explained
+
+The **visual front end** is the box in §2 that turns images into motion and map matches:
+- **feature detection and tracking:** finding corners in each image and following them;
+- **motion estimation:** working out the camera's movement from how the features moved, rejecting bad matches (RANSAC);
+- **local optimisation (bundle adjustment):** refining recent poses and feature positions together;
+- for SLAM: **place recognition** (have I seen this before?) and **map storage**.
+
+That is years of specialised work, which these packages have already done and tested. We **use** one and write the glue that turns its output into gated measurements (§4) and catalogue entries (§5).
+
+| Package | What it is | Gives us | Save a map, localize in it later (§7) | Uses the IMU | Humble | Licence |
+| --- | --- | --- | --- | --- | --- | --- |
+| **RTAB-Map** (`rtabmap_ros`) | Graph SLAM library with its own stereo VO | VO **and** SLAM **and** an occupancy grid, in one | **Yes**: a saved database and a localization mode | Optional | **Released binaries** | BSD |
+| **OpenVINS** | Visual-inertial odometry only: an MSCKF, an EKF variant close to our own | Very good VO; estimates the camera-IMU time offset online | No (VO only) | Yes, central | Builds from source | GPL-3.0 |
+| **ORB-SLAM3** | Feature-based SLAM, stereo-inertial, several maps | Accurate VO and SLAM; strong relocalization | Yes (saved "atlas") | Yes | Community wrappers | GPL-3.0 |
+| **VINS-Fusion** | Optimisation-based visual-inertial odometry with loop closure | Good VO; a GPU version for Jetson | Limited | Yes, central | Community ports | GPL-3.0 |
+
+**Why RTAB-Map first:** one package covers the VO tier, the mapping run, localization against the saved map and the obstacle grid, it's released for Humble, and it's BSD-licensed like our MIT code. **Its risk:** its VO is less accurate than OpenVINS or ORB-SLAM3. A valid combination is OpenVINS for the VO tier with RTAB-Map for the map tier. The GPL packages are fine to run as separate nodes for our own use; distributing them inside the car's software would bring GPL obligations.
+
+**Decision:** pending the Nano benchmark (§9).
 
 ---
 
@@ -262,22 +321,87 @@ One camera, with depth from its own motion between frames, and the scale from th
 
 ---
 
-## 11. Open decisions (owner)
+## 11. Decisions
 
-| # | Decision | Options | Recommendation |
+| # | Decision | Options | Status |
 | --- | --- | --- | --- |
-| 1 | Camera route | A, B, C or 0 (§6.2) | C, else B |
-| 2 | Compute | Stay on the Nano / move to an Orin Nano | Stay, pending the benchmark (§9); an Orin opens Isaac ROS and much more headroom |
-| 3 | Where depth lives | in Sensing (`stereo_image_proc` or on the camera) / its own Perception component | Sensing: it's a standard measurement product |
-| 4 | Front-end package | RTAB-Map / OpenVINS / ORB-SLAM3 / VINS-Fusion | RTAB-Map first; decide by benchmark |
-| 5 | Fusion structure | split back ends: relative to SE, absolute to LOC (§2) / one tightly coupled estimator (factor graph, e.g. GTSAM) | Split: keeps `odom` guarantees and our tested EKF; revisit if accuracy demands it |
-| 6 | Mapping run requirement | add REQ-SYS-0xx (TBR) as in §7 / not | Add, then check the rules |
-| 7 | Monocular route | as a fallback only / as the main route | Fallback only |
-| 8 | Roadmap | 3.0 (this) → TST sim work → 3.1 `localization` with VO and the catalogue → 3.2 `mapping` → 2.2 detection | as listed |
+| 1 | Camera route | A, B, C or 0 (§6.2) | **Decided (owner, 2026-11-28): stereo, B planned, open to C**; owner evaluates which to buy. Timing is configuration (§6.5) |
+| 2 | Compute | Stay on the Nano / move to an Orin Nano | **Decided: stay on the Nano**; benchmarks (§9) before any move to a new GPU |
+| 3 | Where depth lives | Sensing / its own Perception component | **Decided: Sensing**, like a lidar would be |
+| 4 | Front-end package | RTAB-Map / OpenVINS / ORB-SLAM3 / VINS-Fusion (§8.1) | Open: by the Nano benchmark; RTAB-Map recommended first |
+| 5 | Fusion structure | Split back ends / one tightly coupled estimator | **Decided: split**; nothing tightly coupled unless it has to be. Modular gates in each fusion package (§12) |
+| 6 | Mapping run | Required / configurable | **Decided: configurable**, operation modes `mapping` / `operating` (§7) |
+| 7 | Monocular route | Fallback / main | **Decided: fallback only, a nice-to-have** after everything else |
+| 8 | Roadmap | 3.0 → TST sim work → 3.1 `localization` (VO, catalogue) → 3.2 `mapping` → 2.2 detection | **Decided: as listed** |
+| 9 | Object detection scope | One package per object / one package for any object | Proposed: one package, any object (§13) |
 
 ---
 
-## 12. Leading research and papers
+## 12. Modular fusion: one gate framework, two estimators
+
+"Split" (Decision 5) means **two estimators, each owning one frame**, connected only by topics:
+- `state_estimation` owns `odom` → `base_footprint`; its inputs are the relative ones: IMU, wheel, VO;
+- `localization` owns `map` → `odom`; its inputs are `/odom` and the absolute ones: landmark fixes, SLAM matches.
+
+Neither knows the other's internals. `localization` takes `/odom` as its motion and **must not fuse VO again**: that would count the same information twice. The correlation between `odom` and the fixes is ignored, the usual REP-105 practice.
+
+**Inside each, sources and gates are modules, not code paths.** The pattern already exists in `state_estimation` (`slip_checks.hpp`: the checks as pure functions); 3.1 generalises it:
+
+| Piece | What | Example |
+| --- | --- | --- |
+| **Measurement adapter** | Turns one source's message into a measurement: value, covariance, which states it observes | `WheelSpeed`, `ImuYawRate`, `VoBodyVelocity`, `ConeFix` |
+| **Gate** | A pure function: (measurement, state) → accept or reject, and why | `finite`, `innovation_chi2`, `slip_window`, `vo_quality`, `gyro_agreement`, `unambiguous_association` |
+| **Source monitor** | Hysteresis per source: active → suspect → lost → active, from its gate results | lost after 5 rejects in a row, back after 10 accepts |
+| **Filter core** | Predict and update; knows nothing about sources | today's `ExtendedKalmanFilter` |
+
+The **gate library is shared** by both estimators (a small pure C++ package, e.g. `fusion_gates`), so `innovation_chi2` is written and tested once. Each estimator lists its sources in its configuration:
+
+```yaml
+sources:
+  wheel:
+    adapter: wheel_speed
+    topic: /wheel/odom
+    gates: [finite, slip_checks, innovation_chi2]
+  vo:
+    adapter: body_velocity
+    topic: /vo/odom
+    gates: [finite, vo_quality, gyro_agreement, innovation_chi2]
+    monitor: {lose_after: 5, regain_after: 10}
+```
+
+So adding a source is an adapter plus configuration, with no change to the filter, and a source can be switched off in configuration to test the fallback. `localization` derives the **tier** (§3) from its source monitors. **Honest note:** today the IMU and wheel are wired into `state_estimation` directly; moving them onto this pattern is a refactor at the start of 3.1, before VO is added, like the slip-check refactor in 2.5.
+
+---
+
+## 13. Object detection: one package, any object
+
+A package per object (`cone_detection`, `person_detection`, …) would repeat the camera handling, the geometry and the output in each. Instead, **one `object_detection` package with pluggable detectors** (`pluginlib`, like nav2's costmap layers), all producing the same output:
+
+```
+images (+ depth) ──► detector plugins ──► common detection: class, score, position + covariance ──► merge duplicates ──► /perception/detections
+                      • colour_shape  (cones: needs no training)
+                      • learned       (a multi-class model, e.g. YOLO on TensorRT: person, robot, cone, …)
+                      • future: open-vocabulary (any object named in text), compute permitting
+```
+
+**Classes are configuration**, not code. Each says which detector finds it, its size (for range from size, as 2.2 specced for cones), whether it moves, and whether it's a landmark kind (§5.3):
+
+```yaml
+classes:
+  cone:   {detector: colour_shape, height: 0.457, dynamic: false, landmark: cone}
+  person: {detector: learned, height: 1.7, dynamic: true}
+  robot:  {detector: learned, dynamic: true}
+```
+
+**"Any object" means two different things**, handled in two places:
+1. **Objects that need a label:** cones are goals, people and robots move. This is `object_detection`: it can only label what a detector knows.
+2. **Anything in the way, whatever it is:** this doesn't need a label. **Stereo depth goes straight into the obstacle map** (`mapping`, §8). A rock is avoided because it is there, not because it was recognised.
+
+Effect on 2.2: its spec becomes the `colour_shape` plugin plus the package frame, and `/perception/cones` becomes `/perception/detections` with `class_id` (ICD-PER-GNC changes when 2.2 resumes).
+
+---
+
+## 14. Leading research and papers
 
 Read in roughly this order.
 
